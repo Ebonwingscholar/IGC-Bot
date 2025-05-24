@@ -14,8 +14,8 @@ if (!fs.existsSync(dataDir)) {
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages
     ] 
 });
@@ -45,6 +45,19 @@ client.once(Events.ClientReady, () => {
 // Handle command interactions
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
+
+    // Check if the interaction is in an allowed channel
+    if (interaction.channel && interaction.channel.type !== 'DM') {
+        const allowedChannels = config.ALLOWED_CHANNEL_IDS;
+        // If there are specified allowed channels and this isn't one of them
+        if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+            await interaction.reply({ 
+                content: 'This command can only be used in designated channels or via DM.', 
+                ephemeral: true 
+            });
+            return;
+        }
+    }
 
     const command = client.commands.get(interaction.commandName);
 

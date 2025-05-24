@@ -2,6 +2,9 @@ module.exports = {
     // The Discord role ID that has admin privileges (can reset reservations)
     ADMIN_ROLE_ID: process.env.ADMIN_ROLE_ID || 'YOUR_ADMIN_ROLE_ID_HERE',
     
+    // Channel IDs where the bot can be used (leave empty to allow all channels)
+    ALLOWED_CHANNEL_IDS: process.env.ALLOWED_CHANNEL_IDS ? process.env.ALLOWED_CHANNEL_IDS.split(',') : [],
+    
     // Command prefix for DM commands
     PREFIX: '!',
     
