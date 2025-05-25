@@ -14,7 +14,6 @@ if (!fs.existsSync(dataDir)) {
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages
     ] 
@@ -40,17 +39,28 @@ for (const file of commandFiles) {
 // Ready event
 client.once(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user.tag}`);
+    console.log(`Bot is in ${client.guilds.cache.size} servers`);
+    client.guilds.cache.forEach(guild => {
+        console.log(`- ${guild.name} (${guild.id})`);
+    });
 });
 
 // Handle command interactions
 client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+    console.log(`Received interaction: ${interaction.type}`);
+    if (interaction.isChatInputCommand()) {
+        console.log(`Received slash command: ${interaction.commandName}`);
+    } else {
+        console.log('Not a chat input command');
+        return;
+    }
 
     // Check if the interaction is in an allowed channel
     if (interaction.channel && interaction.channel.type !== 'DM') {
         const allowedChannels = config.ALLOWED_CHANNEL_IDS;
         // If there are specified allowed channels and this isn't one of them
         if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+            console.log('Command not in an allowed channel');
             await interaction.reply({ 
                 content: 'This command can only be used in designated channels or via DM.', 
                 ephemeral: true 
@@ -67,9 +77,10 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     try {
+        console.log(`Executing command: ${interaction.commandName}`);
         await command.execute(interaction);
     } catch (error) {
-        console.error(error);
+        console.error(`Error executing command ${interaction.commandName}:`, error);
         const errorMessage = 'There was an error while executing this command!';
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({ content: errorMessage, ephemeral: true });
