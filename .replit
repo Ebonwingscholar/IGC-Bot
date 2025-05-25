@@ -22,7 +22,15 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node index.js"
-waitForPort = 3000
+waitForPort = 5000
 
 [deployment]
 run = ["sh", "-c", "npm install discord.js dotenv && node index.js"]
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
