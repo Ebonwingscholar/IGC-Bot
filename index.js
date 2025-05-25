@@ -133,14 +133,26 @@ client.on(Events.MessageCreate, async message => {
                 await message.reply('There was an error resetting the reservations. Please try again.');
             }
         }
+    } else if (command === '!canceltable') {
+        // Forward to canceltable command
+        const canceltableCommand = client.commands.get('canceltable');
+        if (canceltableCommand) {
+            try {
+                await canceltableCommand.handleDM(message, args);
+            } catch (error) {
+                console.error(error);
+                await message.reply('There was an error canceling the reservation. Please try again.');
+            }
+        }
     } else if (command === '!help') {
         // Show help message
         const helpMessage = `
 **Wargaming Table Reservation Bot Commands:**
-- \`!reserve <player names> | <game name>\` - Reserve a table (Example: !reserve John, Bob | Warhammer 40k)
+- \`!reserve <player names> + <game name>\` - Reserve a table (Example: !reserve John, Bob + Warhammer 40k)
 - \`!cancel\` - Cancel your reservation
 - \`!view\` - View all current reservations
 - \`!reset\` - Reset all reservations (Admin only)
+- \`!canceltable <table number>\` - Cancel a reservation by table number (Admin only)
 - \`!help\` - Show this help message
         `;
         await message.reply(helpMessage);

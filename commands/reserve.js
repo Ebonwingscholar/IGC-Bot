@@ -7,7 +7,7 @@ module.exports = {
         .setDescription('Reserve a table for your game')
         .addStringOption(option => 
             option.setName('details')
-                .setDescription('Provide player names and game name (format: "Player1, Player2 | Game Name")')
+                .setDescription('Provide player names and game name (format: "Player1, Player2 + Game Name")')
                 .setRequired(true)),
     
     async execute(interaction) {
@@ -29,7 +29,7 @@ module.exports = {
         const username = message.author.tag;
         
         if (!detailsText || detailsText.trim() === '') {
-            await message.reply('Please provide player names and game name (format: "Player1, Player2 | Game Name")');
+            await message.reply('Please provide player names and game name (format: "Player1, Player2 + Game Name")');
             return;
         }
         
@@ -43,10 +43,15 @@ module.exports = {
     },
     
     async processReservation(userId, username, details) {
-        // Parse details - expected format: "Player1, Player2 | Game Name"
+        // Parse details - expected format: "Player1, Player2 + Game Name"
         let playerNames, gameName;
         
-        if (details.includes('|')) {
+        if (details.includes('+')) {
+            const parts = details.split('+');
+            playerNames = parts[0].trim();
+            gameName = parts[1].trim();
+        } else if (details.includes('|')) {
+            // For backward compatibility
             const parts = details.split('|');
             playerNames = parts[0].trim();
             gameName = parts[1].trim();
@@ -75,6 +80,35 @@ module.exports = {
         // Create the reservation
         const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName);
         
+        // Send payment reminder to the user
+        this.sendPaymentReminder(userId, tableNumber, playerNames, gameName);
+        
         return `Table ${tableNumber} has been reserved for ${playerNames} playing ${gameName}. Have a great game!`;
+    },
+    
+    async sendPaymentReminder(userId, tableNumber, playerNames, gameName) {
+        try {
+            const { client } = require('../index');
+            const user = await client.users.fetch(userId);
+            
+            if (user) {
+                const reminderMessage = `
+**Payment Reminder for Table ${tableNumber}**
+
+Thank you for reserving Table ${tableNumber} for ${playerNames} playing ${gameName}.
+
+Please remember to pay for your table before playing. This helps us maintain the club and provide the best gaming experience for everyone.
+
+You can pay at the club entrance when you arrive. If you have any questions, please speak to a club admin.
+
+Have a great game!
+                `;
+                
+                await user.send(reminderMessage);
+            }
+        } catch (error) {
+            console.error('Error sending payment reminder:', error);
+            // Don't throw the error - this is a notification and shouldn't block the main reservation process
+        }
     }
 };

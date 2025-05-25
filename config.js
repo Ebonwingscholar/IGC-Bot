@@ -11,16 +11,18 @@ module.exports = {
     // Help message text
     HELP_TEXT: `
 **Wargaming Table Reservation Bot Commands:**
-- \`/reserve <details>\` - Reserve a table (format: "Player1, Player2 | Game Name")
+- \`/reserve <details>\` - Reserve a table (format: "Player1, Player2 + Game Name")
 - \`/cancel\` - Cancel your reservation
 - \`/view\` - View all current reservations
 - \`/reset\` - Reset all reservations (Admin only)
+- \`/canceltable <table>\` - Cancel a specific table reservation (Admin only)
 
 You can also use these commands in DMs with the bot:
-- \`!reserve <player names> | <game name>\` - Reserve a table
+- \`!reserve <player names> + <game name>\` - Reserve a table
 - \`!cancel\` - Cancel your reservation
 - \`!view\` - View all current reservations
 - \`!reset\` - Reset all reservations (Admin only)
+- \`!canceltable <table number>\` - Cancel a specific table reservation (Admin only)
 - \`!help\` - Show this help message
     `
 };
