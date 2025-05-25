@@ -99,7 +99,10 @@ Thank you for reserving Table ${tableNumber} for ${playerNames} playing ${gameNa
 
 Please remember to pay for your table before playing. This helps us maintain the club and provide the best gaming experience for everyone.
 
-You can pay at the club entrance when you arrive. If you have any questions, please speak to a club admin.
+You can pay via PayPal: https://www.paypal.me/Granitegamingco?locale.x=en_GB
+Please use the "Friends and Family" option when making your payment.
+
+Full instructions on club fees and payment methods are available in the club fees and how to pay channel.
 
 Have a great game!
                 `;

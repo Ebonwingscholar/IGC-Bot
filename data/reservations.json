@@ -1,1 +1,18 @@
-[]
+[
+  {
+    "userId": "1146364699072528397",
+    "username": "inspiring.presence.79_68746",
+    "playerNames": "grant,Jason",
+    "gameName": "40k",
+    "tableNumber": 1,
+    "timestamp": "2025-05-25T08:19:51.930Z"
+  },
+  {
+    "userId": "351792194769780737",
+    "username": "acidburns",
+    "playerNames": "test1 and test2",
+    "gameName": "40k",
+    "tableNumber": 2,
+    "timestamp": "2025-05-25T08:36:27.798Z"
+  }
+]
