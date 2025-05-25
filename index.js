@@ -173,6 +173,14 @@ client.on(Events.MessageCreate, async message => {
     }
 });
 
+// Create a simple HTTP server for uptime monitoring
+const http = require('http');
+const server = http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end('Bot is online!');
+});
+server.listen(3000);
+
 // Login to Discord
 client.login(process.env.DISCORD_TOKEN);
 
