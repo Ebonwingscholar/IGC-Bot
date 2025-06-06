@@ -38,7 +38,7 @@ module.exports = {
           .addUserOption(option =>
               option.setName('player6')
                   .setDescription('Sixth player')
-                  .setRequired(false)),
+                  .setRequired(false))
         .addStringOption(option =>
             option.setName('game')
                 .setDescription('Name of the game they will be playing')
