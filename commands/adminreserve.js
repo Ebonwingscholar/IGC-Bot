@@ -3,43 +3,47 @@ const tableManager = require('../utils/tableManager');
 const config = require('../config');
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('adminreserve')
-        .setDescription('Admin: Reserve a specific table for players')
-        .addIntegerOption(option =>
-            option.setName('table')
-                .setDescription('Table number to reserve')
-                .setRequired(true)
-                .setMinValue(1))
-        .addUserOption(option =>
-            option.setName('player1')
-                .setDescription('First player')
-                .setRequired(true))
-        .addUserOption(option =>
-            option.setName('player2')
-                .setDescription('Second player')
-                .setRequired(false))
-        .addUserOption(option =>
-            option.setName('player3')
-                .setDescription('Third player')
-                .setRequired(false))
-        .addUserOption(option =>
-            option.setName('player4')
-                .setDescription('Fourth player')
-                .setRequired(false))
-        .addUserOption(option =>
-            option.setName('player5')
-                .setDescription('Fifth player')
-                .setRequired(false))
-        .addUserOption(option =>
-            option.setName('player6')
-                .setDescription('Sixth player')
-                .setRequired(false))
+        data: new SlashCommandBuilder()
+          .setName('adminreserve')
+          .setDescription('Admin: Reserve a specific table for players')
+          .addIntegerOption(option =>
+              option.setName('table')
+                  .setDescription('Table number to reserve')
+                  .setRequired(true)
+                  .setMinValue(1))
+          .addUserOption(option =>
+              option.setName('player1')
+                  .setDescription('First player')
+                  .setRequired(true))
+          .addStringOption(option =>
+              option.setName('game')
+                  .setDescription('Name of the game they will be playing')
+                  .setRequired(true))
+          .addUserOption(option =>
+              option.setName('player2')
+                  .setDescription('Second player')
+                  .setRequired(false))
+          .addUserOption(option =>
+              option.setName('player3')
+                  .setDescription('Third player')
+                  .setRequired(false))
+          .addUserOption(option =>
+              option.setName('player4')
+                  .setDescription('Fourth player')
+                  .setRequired(false))
+          .addUserOption(option =>
+              option.setName('player5')
+                  .setDescription('Fifth player')
+                  .setRequired(false))
+          .addUserOption(option =>
+              option.setName('player6')
+                  .setDescription('Sixth player')
+                  .setRequired(false)),
         .addStringOption(option =>
             option.setName('game')
                 .setDescription('Name of the game they will be playing')
                 .setRequired(true)),
-    
+  
     async execute(interaction) {
         const userId = interaction.user.id;
         

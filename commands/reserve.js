@@ -3,32 +3,36 @@ const tableManager = require('../utils/tableManager');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('reserve')
-        .setDescription('Reserve a table for your game')
-        .addUserOption(option =>
-            option.setName('player1')
-                .setDescription('First player (yourself or someone else)')
-                .setRequired(true))
-        .addUserOption(option =>
-            option.setName('player2')
-                .setDescription('Second player')
-                .setRequired(false))
-        .addUserOption(option =>
-            option.setName('player3')
-                .setDescription('Third player')
-                .setRequired(false))
-        .addUserOption(option =>
-            option.setName('player4')
-                .setDescription('Fourth player')
-                .setRequired(false))
-        .addUserOption(option =>
-            option.setName('player5')
-                .setDescription('Fifth player')
-                .setRequired(false))
-        .addUserOption(option =>
-            option.setName('player6')
-                .setDescription('Sixth player')
-                .setRequired(false))
+    .setName('reserve')
+    .setDescription('Reserve a table for your game')
+    .addUserOption(option =>
+        option.setName('player1')
+            .setDescription('First player (yourself or someone else)')
+            .setRequired(true))
+    .addStringOption(option =>
+        option.setName('game')
+            .setDescription('Name of the game you will be playing')
+            .setRequired(true))
+    .addUserOption(option =>
+        option.setName('player2')
+            .setDescription('Second player')
+            .setRequired(false))
+    .addUserOption(option =>
+        option.setName('player3')
+            .setDescription('Third player')
+            .setRequired(false))
+    .addUserOption(option =>
+        option.setName('player4')
+            .setDescription('Fourth player')
+            .setRequired(false))
+    .addUserOption(option =>
+        option.setName('player5')
+            .setDescription('Fifth player')
+            .setRequired(false))
+    .addUserOption(option =>
+        option.setName('player6')
+            .setDescription('Sixth player')
+            .setRequired(false)),
         .addStringOption(option =>
             option.setName('game')
                 .setDescription('Name of the game you will be playing')
