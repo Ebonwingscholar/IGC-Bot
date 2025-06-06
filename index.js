@@ -15,7 +15,9 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
     ] 
 });
 
@@ -28,7 +30,7 @@ const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('
 for (const file of commandFiles) {
     const filePath = path.join(commandsPath, file);
     const command = require(filePath);
-    
+
     if ('data' in command && 'execute' in command) {
         client.commands.set(command.data.name, command);
     } else {
@@ -47,18 +49,13 @@ client.once(Events.ClientReady, () => {
 
 // Handle command interactions
 client.on(Events.InteractionCreate, async interaction => {
-    console.log(`Received interaction: ${interaction.type}`);
-    if (interaction.isChatInputCommand()) {
-        console.log(`Received slash command: ${interaction.commandName}`);
-    } else {
-        console.log('Not a chat input command');
-        return;
-    }
+    if (!interaction.isChatInputCommand()) return;
 
-    // Check if the interaction is in an allowed channel
+    console.log(`Received slash command: ${interaction.commandName}`);
+
+    // Check if the interaction is in an allowed channel (or DM)
     if (interaction.channel && interaction.channel.type !== 'DM') {
         const allowedChannels = config.ALLOWED_CHANNEL_IDS;
-        // If there are specified allowed channels and this isn't one of them
         if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
             console.log('Command not in an allowed channel');
             await interaction.reply({ 
@@ -70,7 +67,6 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     const command = client.commands.get(interaction.commandName);
-
     if (!command) {
         console.error(`No command matching ${interaction.commandName} was found.`);
         return;
@@ -82,92 +78,50 @@ client.on(Events.InteractionCreate, async interaction => {
     } catch (error) {
         console.error(`Error executing command ${interaction.commandName}:`, error);
         const errorMessage = 'There was an error while executing this command!';
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: errorMessage, ephemeral: true });
-        } else {
-            await interaction.reply({ content: errorMessage, ephemeral: true });
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ content: errorMessage, ephemeral: true });
+            } else {
+                await interaction.reply({ content: errorMessage, ephemeral: true });
+            }
+        } catch (followUpError) {
+            console.error('Failed to send error reply:', followUpError);
         }
     }
 });
 
 // Handle direct messages
 client.on(Events.MessageCreate, async message => {
-    // Ignore messages from bots and non-DM channels
     if (message.author.bot || message.channel.type !== 'DM') return;
 
-    // Process the message content
     const content = message.content.trim();
     const args = content.split(/\s+/);
     const command = args.shift().toLowerCase();
 
-    if (command === '!reserve') {
-        // Forward to reserve command
-        const reserveCommand = client.commands.get('reserve');
-        if (reserveCommand) {
+    const commandMap = {
+        '!reserve': 'reserve',
+        '!cancel': 'cancel',
+        '!view': 'view',
+        '!reset': 'reset',
+        '!canceltable': 'canceltable',
+        '!adminreserve': 'adminreserve'
+    };
+
+    if (commandMap[command]) {
+        const cmd = client.commands.get(commandMap[command]);
+        if (cmd) {
             try {
-                await reserveCommand.handleDM(message, args.join(' '));
+                if (command === '!reserve' || command === '!adminreserve' || command === '!canceltable') {
+                    await cmd.handleDM(message, args.join(' '));
+                } else {
+                    await cmd.handleDM(message);
+                }
             } catch (error) {
                 console.error(error);
-                await message.reply('There was an error processing your reservation. Please try again.');
-            }
-        }
-    } else if (command === '!cancel') {
-        // Forward to cancel command
-        const cancelCommand = client.commands.get('cancel');
-        if (cancelCommand) {
-            try {
-                await cancelCommand.handleDM(message);
-            } catch (error) {
-                console.error(error);
-                await message.reply('There was an error canceling your reservation. Please try again.');
-            }
-        }
-    } else if (command === '!view') {
-        // Forward to view command
-        const viewCommand = client.commands.get('view');
-        if (viewCommand) {
-            try {
-                await viewCommand.handleDM(message);
-            } catch (error) {
-                console.error(error);
-                await message.reply('There was an error viewing the reservations. Please try again.');
-            }
-        }
-    } else if (command === '!reset') {
-        // Forward to reset command
-        const resetCommand = client.commands.get('reset');
-        if (resetCommand) {
-            try {
-                await resetCommand.handleDM(message);
-            } catch (error) {
-                console.error(error);
-                await message.reply('There was an error resetting the reservations. Please try again.');
-            }
-        }
-    } else if (command === '!canceltable') {
-        // Forward to canceltable command
-        const canceltableCommand = client.commands.get('canceltable');
-        if (canceltableCommand) {
-            try {
-                await canceltableCommand.handleDM(message, args);
-            } catch (error) {
-                console.error(error);
-                await message.reply('There was an error canceling the reservation. Please try again.');
-            }
-        }
-    } else if (command === '!adminreserve') {
-        // Forward to adminreserve command
-        const adminreserveCommand = client.commands.get('adminreserve');
-        if (adminreserveCommand) {
-            try {
-                await adminreserveCommand.handleDM(message, args);
-            } catch (error) {
-                console.error(error);
-                await message.reply('There was an error creating the admin reservation. Please try again.');
+                await message.reply(`There was an error processing your request. Please try again.`);
             }
         }
     } else if (command === '!help') {
-        // Show help message
         const helpMessage = `
 **Wargaming Table Reservation Bot Commands:**
 - \`!reserve <player names> + <game name>\` - Reserve a table (Example: !reserve John, Bob + Warhammer 40k)
@@ -182,7 +136,6 @@ client.on(Events.MessageCreate, async message => {
         `;
         await message.reply(helpMessage);
     } else {
-        // Unknown command
         await message.reply(`I don't recognize that command. Type \`!help\` for a list of available commands.`);
     }
 });
@@ -198,5 +151,5 @@ server.listen(5001);
 // Login to Discord
 client.login(process.env.DISCORD_TOKEN);
 
-// Deploy commands when running deploy-commands.js
+// Export client for other modules (e.g., send DMs)
 module.exports = { client };
