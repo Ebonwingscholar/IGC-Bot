@@ -40,10 +40,12 @@ module.exports = {
         
         // Collect all mentioned players
         const players = [];
+
         for (let i = 1; i <= 6; i++) {
-            const player = interaction.options.getUser(`player${i}`);
-            if (player) {
-                players.push(player);
+            const user = interaction.options.getUser(`player${i}`);
+            if (user) {
+                const member = await interaction.guild.members.fetch(user.id);
+                players.push(member);
             }
         }
         
@@ -98,7 +100,7 @@ module.exports = {
         }
         
         // Build player names string from Discord users
-        const playerNames = players.map(player => player.displayName || player.username).join(', ');
+        const playerNames = players.map(p => p.nickname || p.user.username).join(', ');
         
         // Create the reservation
         const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName.trim());
