@@ -106,7 +106,8 @@ module.exports = {
 
         const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName.trim());
 
-        this.sendPaymentReminder(userId, tableNumber, playerNames, gameName.trim());
+        // ✅ Send reminder to ALL users mentioned
+        this.sendPaymentReminder(users, tableNumber, playerNames, gameName.trim());
 
         return `Table ${tableNumber} has been reserved for ${playerNames} playing ${gameName}. Have a great game!`;
     },
@@ -142,18 +143,17 @@ module.exports = {
 
         const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName);
 
-        this.sendPaymentReminder(userId, tableNumber, playerNames, gameName);
+        // ⛔ DM from DM reservations still only goes to author
+        this.sendPaymentReminder([{ id: userId }], tableNumber, playerNames, gameName);
 
         return `Table ${tableNumber} has been reserved for ${playerNames} playing ${gameName}. Have a great game!`;
     },
 
-    async sendPaymentReminder(userId, tableNumber, playerNames, gameName) {
+    async sendPaymentReminder(users, tableNumber, playerNames, gameName) {
         try {
             const { client } = require('../index');
-            const user = await client.users.fetch(userId);
 
-            if (user) {
-                const reminderMessage = `
+            const reminderMessage = `
 **Payment Reminder for Table ${tableNumber}**
 
 Thank you for reserving Table ${tableNumber} for ${playerNames} playing ${gameName}.
@@ -166,11 +166,20 @@ Please use the "Friends and Family" option when making your payment.
 Full instructions on club fees and payment methods are available in the club fees and how to pay channel.
 
 Have a great game!
-                `;
-                await user.send(reminderMessage);
+`;
+
+            for (const user of users) {
+                try {
+                    const fetchedUser = await client.users.fetch(user.id);
+                    if (fetchedUser) {
+                        await fetchedUser.send(reminderMessage);
+                    }
+                } catch (err) {
+                    console.error(`Could not send DM to user ${user.id}:`, err.message);
+                }
             }
         } catch (error) {
-            console.error('Error sending payment reminder:', error);
+            console.error('Error sending payment reminders:', error);
         }
     }
 };
