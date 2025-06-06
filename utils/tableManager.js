@@ -73,6 +73,37 @@ class TableManager {
     }
 
     /**
+     * Add a reservation to a specific table (admin function)
+     */
+    addReservationToSpecificTable(userId, username, playerNames, gameName, tableNumber) {
+        // Check if the table number is valid
+        if (tableNumber < 1 || tableNumber > this.MAX_TABLES) {
+            return -1; // Invalid table number
+        }
+        
+        // Check if the table is already reserved
+        const existingReservation = this.reservations.find(r => r.tableNumber === tableNumber);
+        if (existingReservation) {
+            return -1; // Table already reserved
+        }
+        
+        // Create the new reservation
+        const newReservation = {
+            userId,
+            username,
+            playerNames,
+            gameName,
+            tableNumber,
+            timestamp: new Date().toISOString()
+        };
+        
+        this.reservations.push(newReservation);
+        this.saveReservations();
+        
+        return tableNumber;
+    }
+
+    /**
      * Remove a reservation by user ID
      */
     removeReservation(userId) {

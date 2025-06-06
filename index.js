@@ -155,6 +155,17 @@ client.on(Events.MessageCreate, async message => {
                 await message.reply('There was an error canceling the reservation. Please try again.');
             }
         }
+    } else if (command === '!adminreserve') {
+        // Forward to adminreserve command
+        const adminreserveCommand = client.commands.get('adminreserve');
+        if (adminreserveCommand) {
+            try {
+                await adminreserveCommand.handleDM(message, args);
+            } catch (error) {
+                console.error(error);
+                await message.reply('There was an error creating the admin reservation. Please try again.');
+            }
+        }
     } else if (command === '!help') {
         // Show help message
         const helpMessage = `
@@ -164,7 +175,10 @@ client.on(Events.MessageCreate, async message => {
 - \`!view\` - View all current reservations
 - \`!reset\` - Reset all reservations (Admin only)
 - \`!canceltable <table number>\` - Cancel a reservation by table number (Admin only)
+- \`!adminreserve <table number> <player names> + <game name>\` - Reserve a specific table (Admin only)
 - \`!help\` - Show this help message
+
+**Note:** Slash commands also support @mentioning players instead of typing names manually.
         `;
         await message.reply(helpMessage);
     } else {
