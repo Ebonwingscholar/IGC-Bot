@@ -1,38 +1,25 @@
 const { SlashCommandBuilder } = require('discord.js');
 const tableManager = require('../utils/tableManager');
+require('dotenv').config(); // Load env vars
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('reserve')
         .setDescription('Reserve a table for your game')
         .addUserOption(option =>
-            option.setName('player1')
-                .setDescription('First player (yourself or someone else)')
-                .setRequired(true))
+            option.setName('player1').setDescription('First player (yourself or someone else)').setRequired(true))
         .addStringOption(option =>
-            option.setName('game')
-                .setDescription('Name of the game you will be playing')
-                .setRequired(true))
+            option.setName('game').setDescription('Name of the game you will be playing').setRequired(true))
         .addUserOption(option =>
-            option.setName('player2')
-                .setDescription('Second player')
-                .setRequired(false))
+            option.setName('player2').setDescription('Second player').setRequired(false))
         .addUserOption(option =>
-            option.setName('player3')
-                .setDescription('Third player')
-                .setRequired(false))
+            option.setName('player3').setDescription('Third player').setRequired(false))
         .addUserOption(option =>
-            option.setName('player4')
-                .setDescription('Fourth player')
-                .setRequired(false))
+            option.setName('player4').setDescription('Fourth player').setRequired(false))
         .addUserOption(option =>
-            option.setName('player5')
-                .setDescription('Fifth player')
-                .setRequired(false))
+            option.setName('player5').setDescription('Fifth player').setRequired(false))
         .addUserOption(option =>
-            option.setName('player6')
-                .setDescription('Sixth player')
-                .setRequired(false)),
+            option.setName('player6').setDescription('Sixth player').setRequired(false)),
 
     async execute(interaction) {
         const userId = interaction.user.id;
@@ -76,13 +63,8 @@ module.exports = {
     },
 
     async processReservationWithUsers(userId, username, users, gameName, guild) {
-        if (!users || users.length === 0) {
-            return 'Please provide at least one player.';
-        }
-
-        if (!gameName || gameName.trim() === '') {
-            return 'Please provide a game name.';
-        }
+        if (!users || users.length === 0) return 'Please provide at least one player.';
+        if (!gameName || gameName.trim() === '') return 'Please provide a game name.';
 
         const existingReservation = tableManager.getUserReservation(userId);
         if (existingReservation) {
@@ -103,11 +85,9 @@ module.exports = {
         }));
 
         const playerNames = playerNamesArray.join(', ');
-
         const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName.trim());
 
-        // ✅ Send reminder to ALL users mentioned
-        this.sendPaymentReminder(users, tableNumber, playerNames, gameName.trim());
+        await this.sendPaymentReminder(users, tableNumber, playerNames, gameName.trim());
 
         return `Table ${tableNumber} has been reserved for ${playerNames} playing ${gameName}. Have a great game!`;
     },
@@ -128,9 +108,7 @@ module.exports = {
             gameName = 'Unspecified Game';
         }
 
-        if (!playerNames) {
-            return 'Please provide at least one player name.';
-        }
+        if (!playerNames) return 'Please provide at least one player name.';
 
         const existingReservation = tableManager.getUserReservation(userId);
         if (existingReservation) {
@@ -143,8 +121,7 @@ module.exports = {
 
         const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName);
 
-        // ⛔ DM from DM reservations still only goes to author
-        this.sendPaymentReminder([{ id: userId }], tableNumber, playerNames, gameName);
+        await this.sendPaymentReminder([{ id: userId }], tableNumber, playerNames, gameName);
 
         return `Table ${tableNumber} has been reserved for ${playerNames} playing ${gameName}. Have a great game!`;
     },
@@ -158,15 +135,17 @@ module.exports = {
 
 Thank you for reserving Table ${tableNumber} for ${playerNames} playing ${gameName}.
 
-Please remember to pay for your table before playing. This helps us maintain the club and provide the best gaming experience for everyone.
+Please pay your table fee **before playing**. This helps support the club.
 
-You can pay via PayPal: https://www.paypal.me/Granitegamingco?locale.x=en_GB
-Please use the "Friends and Family" option when making your payment.
+💳 **Bank Transfer Details**
+• **Account Name:** ${process.env.BANK_ACCOUNT_NAME}
+• **Sort Code:** ${process.env.BANK_SORT_CODE}
+• **Account Number:** ${process.env.BANK_ACCOUNT_NUMBER}
 
-Full instructions on club fees and payment methods are available in the club fees and how to pay channel.
+Please add your name and date of the session to the payment reference. For example: "D Smith 12/10/25"
 
 Have a great game!
-`;
+            `;
 
             for (const user of users) {
                 try {
