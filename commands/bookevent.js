@@ -37,8 +37,7 @@ module.exports = {
         displayName = member.displayName;
       }
     } catch {
-      // Fallback if not in guild or error occurs
-      displayName = username;
+      displayName = username; // fallback
     }
 
     let events = loadEvents();
@@ -49,22 +48,22 @@ module.exports = {
       return;
     }
 
-    // ✅ Ensure bookings array exists
+    // Ensure bookings array exists
     if (!Array.isArray(event.bookings)) {
       event.bookings = [];
     }
 
-    // Prevent double-booking by same user
+    // Prevent double-booking
     if (event.bookings.some(b => b.userId === userId)) {
       await interaction.reply({ content: `You already have a booking for "${eventName}".`, ephemeral: true });
       return;
     }
 
-    // Add booking with displayName
+    // Add booking
     event.bookings.push({
       userId,
       username,
-      displayName, // ✅ Store nickname
+      displayName,
       playerNames,
       gameName,
       paid: false,
@@ -74,4 +73,44 @@ module.exports = {
     saveEvents(events);
 
     // Send confirmation
-    await interaction.reply(`✅ Booking confirmed for **${playerNames}** playing **${gameName}** at event **${event.name}**
+    await interaction.reply(`✅ Booking confirmed for **${playerNames}** playing **${gameName}** at event **${event.name}** on ${event.date}.`);
+
+    // Send DM about payment
+    try {
+      const bankAccount = process.env.CLUB_BANK_ACCOUNT || 'Account details not set';
+      const sortCode = process.env.CLUB_SORT_CODE || 'Sort code not set';
+
+      await interaction.user.send(`
+**Payment Reminder for Event Booking**
+
+Event: **${event.name}** (${event.date})
+Booking: ${playerNames} — Game: ${gameName}
+
+Please pay via **bank transfer** before the event.
+
+Account: \`${bankAccount}\`  
+Sort Code: \`${sortCode}\`  
+
+Thank you for supporting the club!
+      `);
+    } catch (err) {
+      console.error(`Could not send DM to ${username}:`, err);
+    }
+  },
+
+  async autocomplete(interaction) {
+    const focusedValue = interaction.options.getFocused();
+    const events = loadEvents();
+
+    const filtered = events
+      .filter(ev => ev.name.toLowerCase().includes(focusedValue.toLowerCase()))
+      .slice(0, 25);
+
+    await interaction.respond(
+      filtered.map(ev => ({
+        name: `${ev.name} (${ev.date})`,
+        value: ev.name
+      }))
+    );
+  }
+};
