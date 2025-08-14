@@ -99,12 +99,21 @@ Thank you for supporting the club!
   },
 
   async autocomplete(interaction) {
-    const focusedValue = interaction.options.getFocused();
+    const focusedValue = interaction.options.getFocused().toLowerCase();
     const events = loadEvents();
 
-    const filtered = events
-      .filter(ev => ev.name.toLowerCase().includes(focusedValue.toLowerCase()))
-      .slice(0, 25);
+    let filtered;
+
+    if (!focusedValue) {
+      // Show all events if user hasn't typed yet
+      filtered = events;
+    } else {
+      // Filter based on user input
+      filtered = events.filter(ev => ev.name.toLowerCase().includes(focusedValue));
+    }
+
+    // Limit to 25 results
+    filtered = filtered.slice(0, 25);
 
     await interaction.respond(
       filtered.map(ev => ({

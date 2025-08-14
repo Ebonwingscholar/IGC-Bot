@@ -47,45 +47,59 @@ client.once(Events.ClientReady, () => {
     });
 });
 
-// Handle command interactions
+// Handle slash commands and autocomplete
 client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+    // Handle autocomplete
+    if (interaction.isAutocomplete()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command || !command.autocomplete) return;
 
-    console.log(`Received slash command: ${interaction.commandName}`);
-
-    // Check if the interaction is in an allowed channel (or DM)
-    if (interaction.channel && interaction.channel.type !== 'DM') {
-        const allowedChannels = config.ALLOWED_CHANNEL_IDS;
-        if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
-            console.log('Command not in an allowed channel');
-            await interaction.reply({ 
-                content: 'This command can only be used in designated channels or via DM.', 
-                ephemeral: true 
-            });
-            return;
+        try {
+            await command.autocomplete(interaction);
+        } catch (error) {
+            console.error(`Error handling autocomplete for ${interaction.commandName}:`, error);
         }
-    }
-
-    const command = client.commands.get(interaction.commandName);
-    if (!command) {
-        console.error(`No command matching ${interaction.commandName} was found.`);
         return;
     }
 
-    try {
-        console.log(`Executing command: ${interaction.commandName}`);
-        await command.execute(interaction);
-    } catch (error) {
-        console.error(`Error executing command ${interaction.commandName}:`, error);
-        const errorMessage = 'There was an error while executing this command!';
-        try {
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: errorMessage, ephemeral: true });
-            } else {
-                await interaction.reply({ content: errorMessage, ephemeral: true });
+    // Handle normal slash commands
+    if (interaction.isChatInputCommand()) {
+        console.log(`Received slash command: ${interaction.commandName}`);
+
+        // Check if the interaction is in an allowed channel (or DM)
+        if (interaction.channel && interaction.channel.type !== 'DM') {
+            const allowedChannels = config.ALLOWED_CHANNEL_IDS;
+            if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+                console.log('Command not in an allowed channel');
+                await interaction.reply({ 
+                    content: 'This command can only be used in designated channels or via DM.', 
+                    ephemeral: true 
+                });
+                return;
             }
-        } catch (followUpError) {
-            console.error('Failed to send error reply:', followUpError);
+        }
+
+        const command = client.commands.get(interaction.commandName);
+        if (!command) {
+            console.error(`No command matching ${interaction.commandName} was found.`);
+            return;
+        }
+
+        try {
+            console.log(`Executing command: ${interaction.commandName}`);
+            await command.execute(interaction);
+        } catch (error) {
+            console.error(`Error executing command ${interaction.commandName}:`, error);
+            const errorMessage = 'There was an error while executing this command!';
+            try {
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp({ content: errorMessage, ephemeral: true });
+                } else {
+                    await interaction.reply({ content: errorMessage, ephemeral: true });
+                }
+            } catch (followUpError) {
+                console.error('Failed to send error reply:', followUpError);
+            }
         }
     }
 });
