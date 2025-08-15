@@ -13,7 +13,7 @@ module.exports = {
         ),
 
     async execute(interaction) {
-        // Check admin permission (you can customize this check as needed)
+        // Check admin permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
             await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
             return;
@@ -37,15 +37,24 @@ module.exports = {
         }
     },
 
-    // Autocomplete handler for event names (optional, but recommended)
+    // Improved autocomplete handler
     async autocomplete(interaction) {
-        const focusedValue = interaction.options.getFocused();
+        const focusedValue = interaction.options.getFocused().toLowerCase();
         const events = eventStorage.getEvents();
 
-        const filtered = events
-            .map(e => e.name)
-            .filter(name => name.toLowerCase().startsWith(focusedValue.toLowerCase()))
-            .slice(0, 25);
+        let filtered;
+
+        if (!focusedValue) {
+            // Show all events if nothing typed
+            filtered = events.map(e => e.name);
+        } else {
+            // Filter matching events
+            filtered = events
+                .map(e => e.name)
+                .filter(name => name.toLowerCase().includes(focusedValue));
+        }
+
+        filtered = filtered.slice(0, 25); // Limit results
 
         await interaction.respond(
             filtered.map(name => ({ name, value: name }))

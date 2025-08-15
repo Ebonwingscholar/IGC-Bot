@@ -10,18 +10,29 @@ module.exports = {
             option.setName('eventname')
                 .setDescription('The name of the event')
                 .setRequired(true)
-                .setAutocomplete(true)),
+                .setAutocomplete(true)
+        ),
 
     async autocomplete(interaction) {
-        const focusedValue = interaction.options.getFocused();
+        const focusedValue = interaction.options.getFocused().toLowerCase();
         const events = eventStorage.getEvents();
 
-        const filtered = events.filter(event =>
-            event.name.toLowerCase().startsWith(focusedValue.toLowerCase())
-        ).slice(0, 25);
+        let filtered;
+
+        if (!focusedValue) {
+            // Show all events if nothing typed
+            filtered = events.map(e => e.name);
+        } else {
+            // Match anywhere in the name
+            filtered = events
+                .map(e => e.name)
+                .filter(name => name.toLowerCase().includes(focusedValue));
+        }
+
+        filtered = filtered.slice(0, 25); // Limit to 25 for Discord
 
         await interaction.respond(
-            filtered.map(event => ({ name: event.name, value: event.name }))
+            filtered.map(name => ({ name, value: name }))
         );
     },
 
