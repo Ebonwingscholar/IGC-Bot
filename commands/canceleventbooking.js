@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const eventStorage = require('../utils/eventStorage');
+const { loadEvents } = require('../utils/eventStorage');
 const tableManager = require('../utils/tableManager');
 
 module.exports = {
@@ -15,51 +15,56 @@ module.exports = {
 
     async autocomplete(interaction) {
         const focusedValue = interaction.options.getFocused().toLowerCase();
-        const events = eventStorage.getEvents();
+        const events = loadEvents(); // ✅ Pull events from the JSON file
 
         let filtered;
 
         if (!focusedValue) {
             // Show all events if nothing typed
-            filtered = events.map(e => e.name);
+            filtered = events;
         } else {
             // Match anywhere in the name
-            filtered = events
-                .map(e => e.name)
-                .filter(name => name.toLowerCase().includes(focusedValue));
+            filtered = events.filter(e =>
+                e.name.toLowerCase().includes(focusedValue)
+            );
         }
 
-        filtered = filtered.slice(0, 25); // Limit to 25 for Discord
-
         await interaction.respond(
-            filtered.map(name => ({ name, value: name }))
+            filtered.slice(0, 25).map(e => ({
+                name: `${e.name} (${e.date})`,
+                value: e.name
+            }))
         );
     },
 
     async execute(interaction) {
+        const { getEventByName, getBookingByUserAndEvent, removeBooking } = require('../utils/eventStorage');
+
         const userId = interaction.user.id;
         const eventName = interaction.options.getString('eventname');
 
         // Validate event exists
-        const event = eventStorage.getEventByName(eventName);
+        const event = getEventByName(eventName);
         if (!event) {
             await interaction.reply({ content: `Event "${eventName}" not found.`, ephemeral: true });
             return;
         }
 
         // Find the booking
-        const booking = eventStorage.getBookingByUserAndEvent(userId, eventName);
+        const booking = getBookingByUserAndEvent(userId, eventName);
         if (!booking) {
             await interaction.reply({ content: `You don't have a booking for the event "${eventName}".`, ephemeral: true });
             return;
         }
 
         // Remove booking from storage
-        eventStorage.removeBooking(booking);
+        removeBooking(booking);
 
         // Also remove the reservation from tableManager
-        tableManager.removeReservation(booking.tableNumber);
+        if (booking.tableNumber) {
+            tableManager.removeReservation(booking.tableNumber);
+        }
 
-        await interaction.reply(`Your booking for the event "${eventName}" at table ${booking.tableNumber} has been cancelled.`);
+        await interaction.reply(`Your booking for the event "${eventName}" has been cancelled.`);
     }
 };

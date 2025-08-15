@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
-const eventStorage = require('../utils/eventStorage');
+const { loadEvents, getEventByName, deleteEvent } = require('../utils/eventStorage');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -20,15 +20,15 @@ module.exports = {
         }
 
         const eventName = interaction.options.getString('eventname');
+        const event = getEventByName(eventName);
 
-        const event = eventStorage.getEventByName(eventName);
         if (!event) {
             await interaction.reply({ content: `Event "${eventName}" not found.`, ephemeral: true });
             return;
         }
 
         // Delete the event (and all bookings)
-        const success = eventStorage.deleteEvent(eventName);
+        const success = deleteEvent(eventName);
 
         if (success) {
             await interaction.reply({ content: `Event "${eventName}" has been cancelled and removed.`, ephemeral: true });
@@ -37,27 +37,24 @@ module.exports = {
         }
     },
 
-    // Improved autocomplete handler
     async autocomplete(interaction) {
         const focusedValue = interaction.options.getFocused().toLowerCase();
-        const events = eventStorage.getEvents();
+        const events = loadEvents(); // ✅ Same source as /bookevent
 
         let filtered;
-
         if (!focusedValue) {
-            // Show all events if nothing typed
-            filtered = events.map(e => e.name);
+            filtered = events;
         } else {
-            // Filter matching events
-            filtered = events
-                .map(e => e.name)
-                .filter(name => name.toLowerCase().includes(focusedValue));
+            filtered = events.filter(e =>
+                e.name.toLowerCase().includes(focusedValue)
+            );
         }
 
-        filtered = filtered.slice(0, 25); // Limit results
-
         await interaction.respond(
-            filtered.map(name => ({ name, value: name }))
+            filtered.slice(0, 25).map(e => ({
+                name: `${e.name} (${e.date})`,
+                value: e.name
+            }))
         );
     }
 };
