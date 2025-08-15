@@ -47,9 +47,9 @@ client.once(Events.ClientReady, () => {
     });
 });
 
-// Handle slash commands and autocomplete
+// Handle slash commands & autocomplete
 client.on(Events.InteractionCreate, async interaction => {
-    // Handle autocomplete
+    // 🔹 Handle autocomplete
     if (interaction.isAutocomplete()) {
         const command = client.commands.get(interaction.commandName);
         if (!command || !command.autocomplete) return;
@@ -59,14 +59,14 @@ client.on(Events.InteractionCreate, async interaction => {
         } catch (error) {
             console.error(`Error handling autocomplete for ${interaction.commandName}:`, error);
         }
-        return;
+        return; // Prevent running execute() for autocomplete
     }
 
-    // Handle normal slash commands
+    // 🔹 Handle slash commands
     if (interaction.isChatInputCommand()) {
         console.log(`Received slash command: ${interaction.commandName}`);
 
-        // Check if the interaction is in an allowed channel (or DM)
+        // Optional channel restriction
         if (interaction.channel && interaction.channel.type !== 'DM') {
             const allowedChannels = config.ALLOWED_CHANNEL_IDS;
             if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
