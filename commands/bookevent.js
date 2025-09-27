@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { loadEvents, saveEvents } = require('../utils/eventStorage');
+require('dotenv').config(); // Ensure env vars are loaded
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -75,24 +76,32 @@ module.exports = {
     // Send confirmation
     await interaction.reply(`✅ Booking confirmed for **${playerNames}** playing **${gameName}** at event **${event.name}** on ${event.date}.`);
 
-    // Send DM about payment
+    // Send DM about payment (same style as reserve.js)
     try {
-      const bankAccount = process.env.CLUB_BANK_ACCOUNT || 'Account details not set';
-      const sortCode = process.env.CLUB_SORT_CODE || 'Sort code not set';
+      const accountName = process.env.BANK_ACCOUNT_NAME || 'Account name not set';
+      const sortCode = process.env.BANK_SORT_CODE || 'Sort code not set';
+      const accountNumber = process.env.BANK_ACCOUNT_NUMBER || 'Account number not set';
 
-      await interaction.user.send(`
+      const reminderMessage = `
 **Payment Reminder for Event Booking**
 
 Event: **${event.name}** (${event.date})
 Booking: ${playerNames} — Game: ${gameName}
 
-Please pay via **bank transfer** before the event.
+Please pay your event fee **before the event**. This helps support the club.
 
-Account: \`${bankAccount}\`  
-Sort Code: \`${sortCode}\`  
+💳 **Bank Transfer Details**
+• **Account Name:** ${accountName}
+• **Sort Code:** ${sortCode}
+• **Account Number:** ${accountNumber}
+
+Please add your name and the event date to the payment reference.  
+For example: "D Smith ${event.date}"
 
 Thank you for supporting the club!
-      `);
+      `;
+
+      await interaction.user.send(reminderMessage);
     } catch (err) {
       console.error(`Could not send DM to ${username}:`, err);
     }
