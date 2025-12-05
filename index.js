@@ -176,12 +176,13 @@ client.on(Events.GuildMemberAdd, async member => {
             `Welcome **${member.displayName}** to **${member.guild.name}**!\n\n` +
             `We've added you to our Looking For Game groups based on your choices.\n\n` +
             `**Here’s how to get started:**\n` +
-            `1. **Introduce yourself** in this channel.\n` +
+            `1. **Introduce yourself** in this channel. Tell us a bit about yourself and any games you play!\n` +
             `2. **Show off your projects** in <#1359454477127778425>.\n` +
             `3. **Book a table** in <#1359456764638269601> or use the \`/reserve\` command!`
         )
-        .setColor(0x00FF00)
+         .setColor(0x5865F2) // Discord blurple
         .setThumbnail(member.user.displayAvatarURL())
+        .setImage("https://cdn.discordapp.com/attachments/1365276092109426728/1446617773160796201/IGC_Banner.png?ex=6934a349&is=693351c9&hm=d2098af845e67761b18ddd00ad7d502b73de610ce87576e1eb75469b3c8ae103&") // <— add your banner link here
         .setFooter({ text: 'Inverurie Gaming Club' });
 
         await channel.send({ embeds: [welcomeEmbed] });
