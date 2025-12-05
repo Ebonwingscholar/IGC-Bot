@@ -173,7 +173,7 @@ client.on(Events.GuildMemberAdd, async member => {
         const welcomeEmbed = new EmbedBuilder()
         .setTitle('Reinforcements Inbound! 🎲')
         .setDescription(
-            `Welcome ${member} to **${member.guild.name}**!\n\n` +
+            `Welcome **${member.displayName}** to **${member.guild.name}**!\n\n` +
             `We've added you to our Looking For Game groups based on your choices.\n\n` +
             `**Here’s how to get started:**\n` +
             `1. **Introduce yourself** in this channel.\n` +
