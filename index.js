@@ -1,7 +1,8 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { Client, Collection, GatewayIntentBits, Events } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js');
+
 const config = require('./config');
 
 // Create data directory if it doesn't exist
@@ -151,6 +152,43 @@ client.on(Events.MessageCreate, async message => {
         await message.reply(helpMessage);
     } else {
         await message.reply(`I don't recognize that command. Type \`!help\` for a list of available commands.`);
+    }
+});
+
+// Handle New Member Joins
+client.on(Events.GuildMemberAdd, async member => {
+    // 1. REPLACE THIS ID with your specific welcome channel ID (e.g., #general or #introductions)
+    // You can right-click the channel in Discord > Copy Channel ID
+    const welcomeChannelId = '1359448418061123587'; 
+
+    const channel = member.guild.channels.cache.get(welcomeChannelId);
+
+    if (!channel) {
+        console.log(`Could not find welcome channel ${welcomeChannelId}`);
+        return;
+    }
+
+    try {
+        // Create the Welcome Card
+        const welcomeEmbed = new EmbedBuilder()
+        .setTitle('Reinforcements Inbound! 🎲')
+        .setDescription(
+            `Welcome ${member} to **${member.guild.name}**!\n\n` +
+            `We've added you to our Looking For Game groups based on your choices.\n\n` +
+            `**Here’s how to get started:**\n` +
+            `1. **Introduce yourself** in this channel.\n` +
+            `2. **Show off your projects** in <#1359454477127778425>.\n` +
+            `3. **Book a table** in <#1359456764638269601> or use the \`/reserve\` command!`
+        )
+        .setColor(0x00FF00)
+        .setThumbnail(member.user.displayAvatarURL())
+        .setFooter({ text: 'Inverurie Gaming Club' });
+
+        await channel.send({ embeds: [welcomeEmbed] });
+        console.log(`Sent welcome message for ${member.user.tag}`);
+
+    } catch (error) {
+        console.error('Error sending welcome message:', error);
     }
 });
 
