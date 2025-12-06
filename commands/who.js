@@ -11,7 +11,7 @@ const GAME_ROLE_IDS = {
 const GAME_ROLES_MENU = [
     { label: 'Warhammer 40k', value: 'Warhammer 40k' },
     { label: 'Age of Sigmar', value: 'Age of Sigmar' },
-    { label: 'Killteam', value: 'KillTeam' },
+    { label: 'KillTeam', value: 'KillTeam' },
     { label: 'All Other Games', value: 'AllOtherGames' }
 ];
 
@@ -40,28 +40,30 @@ module.exports = {
     async select(interaction) {
         if (interaction.customId !== 'who-game-select') return;
 
+        // Defer reply to avoid interaction timeout
+        await interaction.deferReply({ ephemeral: true });
+
         const chosenKey = interaction.values[0];
         const guild = interaction.guild;
-
-        // Fetch all members to ensure offline members are included
-        await guild.members.fetch();
 
         const roleId = GAME_ROLE_IDS[chosenKey];
         const role = guild.roles.cache.get(roleId);
 
         if (!role) {
-            return interaction.reply({
-                content: `The role **${chosenKey}** was not found on this server.`,
-                ephemeral: true
+            return interaction.editReply({
+                content: `The role **${chosenKey}** was not found on this server.`
             });
         }
 
-        // Get all members with the role
+        // Fetch all members to include offline members
+        await guild.members.fetch();
+
+        // Get all members with the role, fallback to username if displayName missing
         const members = guild.members.cache
             .filter(member => member.roles.cache.has(role.id))
-            .map(member => member.toString());
+            .map(member => member.displayName || member.user.username)
+            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
-        // Build the roster embed
         const embed = new EmbedBuilder()
             .setTitle(`${chosenKey} – Player Roster`)
             .setColor(0x5865F2) // Discord Blurple
@@ -72,9 +74,6 @@ module.exports = {
             )
             .setFooter({ text: `Total players: ${members.length}` });
 
-        await interaction.reply({
-            embeds: [embed],
-            ephemeral: true
-        });
+        await interaction.editReply({ embeds: [embed] });
     }
 };
