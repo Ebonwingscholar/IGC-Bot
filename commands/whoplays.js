@@ -23,7 +23,7 @@ module.exports = {
     async execute(interaction) {
         // Create the selection menu
         const menu = new StringSelectMenuBuilder()
-            .setCustomId('who-game-select')
+            .setCustomId('whoplays-game-select')   // ✅ UPDATED
             .setPlaceholder('Select a game roster to view')
             .addOptions(GAME_ROLES_MENU);
 
@@ -37,7 +37,7 @@ module.exports = {
 
     // Handle the dropdown selection
     async select(interaction) {
-        if (interaction.customId !== 'who-game-select') return;
+        if (interaction.customId !== 'whoplays-game-select') return;  // ✅ UPDATED
 
         // Defer reply to avoid interaction timeout
         await interaction.deferReply();
