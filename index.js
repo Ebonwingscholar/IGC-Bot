@@ -50,6 +50,7 @@ client.once(Events.ClientReady, () => {
 
 // Handle slash commands & autocomplete
 client.on(Events.InteractionCreate, async interaction => {
+
     // 🔹 Handle autocomplete
     if (interaction.isAutocomplete()) {
         const command = client.commands.get(interaction.commandName);
@@ -60,50 +61,62 @@ client.on(Events.InteractionCreate, async interaction => {
         } catch (error) {
             console.error(`Error handling autocomplete for ${interaction.commandName}:`, error);
         }
-        return; // Prevent running execute() for autocomplete
+        return;
     }
 
     // 🔹 Handle slash commands
     if (interaction.isChatInputCommand()) {
         console.log(`Received slash command: ${interaction.commandName}`);
 
-        // Optional channel restriction
         if (interaction.channel && interaction.channel.type !== 'DM') {
             const allowedChannels = config.ALLOWED_CHANNEL_IDS;
             if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
-                console.log('Command not in an allowed channel');
-                await interaction.reply({ 
-                    content: 'This command can only be used in designated channels or via DM.', 
-                    ephemeral: true 
+                await interaction.reply({
+                    content: 'This command can only be used in designated channels or via DM.',
+                    ephemeral: true
                 });
                 return;
             }
         }
 
         const command = client.commands.get(interaction.commandName);
-        if (!command) {
-            console.error(`No command matching ${interaction.commandName} was found.`);
-            return;
-        }
+        if (!command) return;
 
         try {
-            console.log(`Executing command: ${interaction.commandName}`);
             await command.execute(interaction);
         } catch (error) {
             console.error(`Error executing command ${interaction.commandName}:`, error);
             const errorMessage = 'There was an error while executing this command!';
-            try {
-                if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp({ content: errorMessage, ephemeral: true });
-                } else {
-                    await interaction.reply({ content: errorMessage, ephemeral: true });
-                }
-            } catch (followUpError) {
-                console.error('Failed to send error reply:', followUpError);
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ content: errorMessage, ephemeral: true });
+            } else {
+                await interaction.reply({ content: errorMessage, ephemeral: true });
             }
         }
+
+        return;
+    }
+
+    // 🔹 Handle select menu interactions (for /who)
+    if (interaction.isStringSelectMenu()) {
+        const command = client.commands.get('who');
+
+        if (command && typeof command.select === 'function') {
+            try {
+                await command.select(interaction);
+            } catch (error) {
+                console.error('Error handling select menu for /who:', error);
+                await interaction.reply({
+                    content: 'There was an error handling your selection.',
+                    ephemeral: true
+                });
+            }
+        }
+        return;
     }
 });
+
+   
 
 // Handle direct messages
 client.on(Events.MessageCreate, async message => {
