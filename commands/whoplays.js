@@ -1,78 +1,210 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } = require('discord.js');
+require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const { Client, Collection, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js');
+const config = require('./config');
 
-// Replace these with your actual role IDs from Discord
-const GAME_ROLE_IDS = {
-    'Warhammer 40k': '1446511133228929056',
-    'Age of Sigmar': '1446510570403532890',
-    'KillTeam': '1403387824841162752',
-    'AllOtherGames': '1446548080630698056'
-};
+// Create data directory if it doesn't exist
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir);
+}
 
-const GAME_ROLES_MENU = [
-    { label: 'Warhammer 40k', value: 'Warhammer 40k' },
-    { label: 'Age of Sigmar', value: 'Age of Sigmar' },
-    { label: 'KillTeam', value: 'KillTeam' },
-    { label: 'All Other Games', value: 'AllOtherGames' }
-];
+// Initialize bot with necessary intents
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
+});
 
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('whoplays')
-        .setDescription('Show who is interested in a specific game'),
+client.commands = new Collection();
 
-    async execute(interaction) {
-        // Create the selection menu
-        const menu = new StringSelectMenuBuilder()
-            .setCustomId('whoplays-game-select')   // ✅ UPDATED
-            .setPlaceholder('Select a game roster to view')
-            .addOptions(GAME_ROLES_MENU);
+// Load command files
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-        const row = new ActionRowBuilder().addComponents(menu);
+for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
 
-        await interaction.reply({
-            content: 'Choose a game to view its player roster:',
-            components: [row],
-        });
-    },
+    if ('data' in command && 'execute' in command) {
+        client.commands.set(command.data.name, command);
+    } else {
+        console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+    }
+}
 
-    // Handle the dropdown selection
-    async select(interaction) {
-        if (interaction.customId !== 'whoplays-game-select') return;  // ✅ UPDATED
+// Ready event
+client.once(Events.ClientReady, () => {
+    console.log(`Logged in as ${client.user.tag}`);
+    console.log(`Bot is in ${client.guilds.cache.size} servers`);
+    client.guilds.cache.forEach(guild => {
+        console.log(`- ${guild.name} (${guild.id})`);
+    });
+});
 
-        // Defer reply to avoid interaction timeout
-        await interaction.deferReply();
+// Handle interactions
+client.on(Events.InteractionCreate, async interaction => {
 
-        const chosenKey = interaction.values[0];
-        const guild = interaction.guild;
+    // 🔹 Autocomplete
+    if (interaction.isAutocomplete()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command || !command.autocomplete) return;
+        try {
+            await command.autocomplete(interaction);
+        } catch (error) {
+            console.error(`Error handling autocomplete for ${interaction.commandName}:`, error);
+        }
+        return;
+    }
 
-        const roleId = GAME_ROLE_IDS[chosenKey];
-        const role = guild.roles.cache.get(roleId);
+    // 🔹 Slash command
+    if (interaction.isChatInputCommand()) {
+        console.log(`Received slash command: ${interaction.commandName}`);
 
-        if (!role) {
-            return interaction.editReply({
-                content: `The role **${chosenKey}** was not found on this server.`
-            });
+        // Channel restrictions
+        if (interaction.channel && interaction.channel.type !== 'DM') {
+            const allowedChannels = config.ALLOWED_CHANNEL_IDS;
+
+            // Only restrict commands that are NOT whoplays
+            if (interaction.commandName !== 'whoplays' &&
+                allowedChannels.length > 0 &&
+                !allowedChannels.includes(interaction.channelId)) {
+
+                await interaction.reply({
+                    content: 'This command can only be used in designated channels or via DM.',
+                    ephemeral: true
+                });
+                return;
+            }
         }
 
-        // Fetch all members to include offline members
-        await guild.members.fetch();
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
 
-        // Get all members with the role, fallback to username if displayName missing
-        const members = guild.members.cache
-            .filter(member => member.roles.cache.has(role.id))
-            .map(member => member.displayName || member.user.username)
-            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        try {
+            await command.execute(interaction);
+        } catch (error) {
+            console.error(`Error executing command ${interaction.commandName}:`, error);
+            const errorMessage = 'There was an error while executing this command!';
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ content: errorMessage, ephemeral: true });
+            } else {
+                await interaction.reply({ content: errorMessage, ephemeral: true });
+            }
+        }
 
-        const embed = new EmbedBuilder()
-            .setTitle(`${chosenKey} – Player Roster`)
-            .setColor(0x5865F2) // Discord Blurple
-            .setDescription(
-                members.length > 0
-                    ? members.join('\n')
-                    : '*No players currently have this role.*'
-            )
-            .setFooter({ text: `Total players: ${members.length}` });
-
-        await interaction.editReply({ embeds: [embed] });
+        return;
     }
-};
+
+    // 🔹 Handle select menus (IMPORTANT FIX)
+    if (interaction.isStringSelectMenu()) {
+
+        // Allow whoplays selects anywhere
+        if (interaction.customId.startsWith('whoplays')) {
+            const command = client.commands.get('whoplays');
+
+            if (command && typeof command.select === 'function') {
+                try {
+                    return await command.select(interaction);
+                } catch (error) {
+                    console.error('Error handling select menu for /whoplays:', error);
+                    return interaction.reply({
+                        content: 'There was an error handling your selection.',
+                        ephemeral: true
+                    });
+                }
+            }
+        }
+
+        return;
+    }
+});
+
+// Handle Direct Messages
+client.on(Events.MessageCreate, async message => {
+    if (message.author.bot || message.channel.type !== 'DM') return;
+
+    const content = message.content.trim();
+    const args = content.split(/\s+/);
+    const command = args.shift().toLowerCase();
+
+    const commandMap = {
+        '!reserve': 'reserve',
+        '!cancel': 'cancel',
+        '!view': 'view',
+        '!reset': 'reset',
+        '!canceltable': 'canceltable',
+        '!adminreserve': 'adminreserve'
+    };
+
+    if (commandMap[command]) {
+        const cmd = client.commands.get(commandMap[command]);
+        if (cmd) {
+            try {
+                if (['!reserve', '!adminreserve', '!canceltable'].includes(command)) {
+                    await cmd.handleDM(message, args.join(' '));
+                } else {
+                    await cmd.handleDM(message);
+                }
+            } catch (error) {
+                console.error(error);
+                await message.reply(`There was an error processing your request. Please try again.`);
+            }
+        }
+    } else if (command === '!help') {
+        await message.reply(config.HELP_TEXT);
+    } else {
+        await message.reply(`I don't recognize that command. Type \`!help\` for a list of available commands.`);
+    }
+});
+
+// Handle new member join
+client.on(Events.GuildMemberAdd, async member => {
+    const welcomeChannelId = '1359448418061123587';
+    const channel = member.guild.channels.cache.get(welcomeChannelId);
+
+    if (!channel) {
+        console.log(`Could not find welcome channel ${welcomeChannelId}`);
+        return;
+    }
+
+    try {
+        const welcomeEmbed = new EmbedBuilder()
+            .setTitle('Reinforcements Inbound! 🎲')
+            .setDescription(
+                `Welcome **${member.displayName}** to **${member.guild.name}**!\n\n` +
+                `We've added you to our Looking For Game groups based on your choices.\n\n` +
+                `**Here’s how to get started:**\n` +
+                `1. **Introduce yourself** in this channel.\n` +
+                `2. **Show off your projects** in <#1359454477127778425>.\n` +
+                `3. **Book a table** in <#1359456764638269601> or use the \`/reserve\` command!`
+            )
+            .setColor(0x5865F2)
+            .setThumbnail(member.user.displayAvatarURL())
+            .setImage("https://cdn.discordapp.com/attachments/1365276092109426728/1446617773160796201/IGC_Banner.png")
+            .setFooter({ text: 'Inverurie Gaming Club' });
+
+        await channel.send({ embeds: [welcomeEmbed] });
+        console.log(`Sent welcome message for ${member.user.tag}`);
+    } catch (error) {
+        console.error('Error sending welcome message:', error);
+    }
+});
+
+// Simple uptime HTTP server
+const http = require('http');
+const server = http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end('Bot is online!');
+});
+server.listen(5001);
+
+// Login
+client.login(process.env.DISCORD_TOKEN);
+
+module.exports = { client };
