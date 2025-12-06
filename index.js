@@ -50,7 +50,7 @@ client.once(Events.ClientReady, () => {
 // Handle slash commands & autocomplete
 client.on(Events.InteractionCreate, async interaction => {
 
-    // 🔹 Handle autocomplete
+    // ---------- AUTOCOMPLETE ----------
     if (interaction.isAutocomplete()) {
         const command = client.commands.get(interaction.commandName);
         if (!command || !command.autocomplete) return;
@@ -63,16 +63,19 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
 
-    // 🔹 Handle slash commands
+    // ---------- SLASH COMMANDS ----------
     if (interaction.isChatInputCommand()) {
         console.log(`Received slash command: ${interaction.commandName}`);
 
-        // Channel restrictions
+        // Channel restrictions EXCEPT for /whoplays
         if (interaction.channel && interaction.channel.type !== 'DM') {
             const allowedChannels = config.ALLOWED_CHANNEL_IDS;
 
-            // Only restrict commands that are **not /who**
-            if (interaction.commandName !== 'whoplays' && allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+            if (
+                interaction.commandName !== 'whoplays' && 
+                allowedChannels.length > 0 &&
+                !allowedChannels.includes(interaction.channelId)
+            ) {
                 await interaction.reply({
                     content: 'This command can only be used in designated channels or via DM.',
                     ephemeral: true
@@ -99,26 +102,32 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
 
-    // 🔹 Handle select menu interactions (for /who)
+    // ---------- SELECT MENU INTERACTIONS (for /whoplays) ----------
     if (interaction.isStringSelectMenu()) {
-        const command = client.commands.get('whoplays');
 
-        if (command && typeof command.select === 'function') {
-            try {
-                await command.select(interaction);
-            } catch (error) {
-                console.error('Error handling select menu for /whoplays:', error);
-                await interaction.reply({
-                    content: 'There was an error handling your selection.',
-                    ephemeral: true
-                });
+        // Only handle menus created by /whoplays
+        if (interaction.customId.startsWith('whoplays')) {
+
+            const command = client.commands.get('whoplays');
+
+            if (command && typeof command.select === 'function') {
+                try {
+                    return await command.select(interaction);
+                } catch (error) {
+                    console.error('Error handling select menu for /whoplays:', error);
+                    return interaction.reply({
+                        content: 'There was an error handling your selection.',
+                        ephemeral: true
+                    });
+                }
             }
         }
+
         return;
     }
 });
 
-// Handle direct messages
+// ---------- DIRECT MESSAGE COMMANDS ----------
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot || message.channel.type !== 'DM') return;
 
@@ -156,7 +165,7 @@ client.on(Events.MessageCreate, async message => {
     }
 });
 
-// Handle New Member Joins
+// ---------- NEW MEMBER WELCOME ----------
 client.on(Events.GuildMemberAdd, async member => {
     const welcomeChannelId = '1359448418061123587'; 
     const channel = member.guild.channels.cache.get(welcomeChannelId);
@@ -173,7 +182,7 @@ client.on(Events.GuildMemberAdd, async member => {
                 `Welcome **${member.displayName}** to **${member.guild.name}**!\n\n` +
                 `We've added you to our Looking For Game groups based on your choices.\n\n` +
                 `**Here’s how to get started:**\n` +
-                `1. **Introduce yourself** in this channel. Tell us a bit about yourself and any games you play!\n` +
+                `1. **Introduce yourself** in this channel.\n` +
                 `2. **Show off your projects** in <#1359454477127778425>.\n` +
                 `3. **Book a table** in <#1359456764638269601> or use the \`/reserve\` command!`
             )
@@ -189,7 +198,7 @@ client.on(Events.GuildMemberAdd, async member => {
     }
 });
 
-// Create a simple HTTP server for uptime monitoring
+// ---------- HTTP SERVER FOR UPTIME ----------
 const http = require('http');
 const server = http.createServer((req, res) => {
     res.writeHead(200);
@@ -197,8 +206,7 @@ const server = http.createServer((req, res) => {
 });
 server.listen(5001);
 
-// Login to Discord
+// ---------- LOGIN ----------
 client.login(process.env.DISCORD_TOKEN);
 
-// Export client for other modules
 module.exports = { client };
