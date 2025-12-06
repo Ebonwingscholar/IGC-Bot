@@ -32,7 +32,6 @@ module.exports = {
         await interaction.reply({
             content: 'Choose a game to view its player roster:',
             components: [row],
-            ephemeral: true
         });
     },
 
@@ -41,7 +40,7 @@ module.exports = {
         if (interaction.customId !== 'who-game-select') return;
 
         // Defer reply to avoid interaction timeout
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply();
 
         const chosenKey = interaction.values[0];
         const guild = interaction.guild;
