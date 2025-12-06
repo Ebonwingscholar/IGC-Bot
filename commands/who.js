@@ -10,8 +10,8 @@ module.exports = {
         const gameRoles = [
             { label: 'Warhammer 40k', value: 'Warhammer 40k' },
             { label: 'Age of Sigmar', value: 'Age of Sigmar' },
-            { label: 'KillTeam', value: 'Killteam' },
-            { label: 'AllOtherGames', value: 'All other games' }
+            { label: 'Killteam', value: 'KillTeam' },
+            { label: 'All Other Games', value: 'AllOtherGames' }
         ];
 
         // Create the selection menu
