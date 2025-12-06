@@ -2,7 +2,6 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { Client, Collection, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js');
-
 const config = require('./config');
 
 // Create data directory if it doesn't exist
@@ -68,14 +67,29 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isChatInputCommand()) {
         console.log(`Received slash command: ${interaction.commandName}`);
 
+        // Channel restrictions
         if (interaction.channel && interaction.channel.type !== 'DM') {
             const allowedChannels = config.ALLOWED_CHANNEL_IDS;
-            if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
-                await interaction.reply({
-                    content: 'This command can only be used in designated channels or via DM.',
-                    ephemeral: true
-                });
-                return;
+            const whoChannel = config.WHO_COMMAND_CHANNEL_ID;
+
+            if (interaction.commandName === 'who') {
+                // /who allowed only in its specific channel
+                if (interaction.channelId !== whoChannel) {
+                    await interaction.reply({
+                        content: `The /who command can only be used in <#${whoChannel}>.`,
+                        ephemeral: true
+                    });
+                    return;
+                }
+            } else {
+                // All other commands restricted to allowed channels
+                if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+                    await interaction.reply({
+                        content: 'This command can only be used in designated channels or via DM.',
+                        ephemeral: true
+                    });
+                    return;
+                }
             }
         }
 
@@ -116,8 +130,6 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
-   
-
 // Handle direct messages
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot || message.channel.type !== 'DM') return;
@@ -150,19 +162,7 @@ client.on(Events.MessageCreate, async message => {
             }
         }
     } else if (command === '!help') {
-        const helpMessage = `
-**Wargaming Table Reservation Bot Commands:**
-- \`!reserve <player names> + <game name>\` - Reserve a table (Example: !reserve John, Bob + Warhammer 40k)
-- \`!cancel\` - Cancel your reservation
-- \`!view\` - View all current reservations
-- \`!reset\` - Reset all reservations (Admin only)
-- \`!canceltable <table number>\` - Cancel a reservation by table number (Admin only)
-- \`!adminreserve <table number> <player names> + <game name>\` - Reserve a specific table (Admin only)
-- \`!help\` - Show this help message
-
-**Note:** Slash commands also support @mentioning players instead of typing names manually.
-        `;
-        await message.reply(helpMessage);
+        await message.reply(config.HELP_TEXT);
     } else {
         await message.reply(`I don't recognize that command. Type \`!help\` for a list of available commands.`);
     }
@@ -170,10 +170,7 @@ client.on(Events.MessageCreate, async message => {
 
 // Handle New Member Joins
 client.on(Events.GuildMemberAdd, async member => {
-    // 1. REPLACE THIS ID with your specific welcome channel ID (e.g., #general or #introductions)
-    // You can right-click the channel in Discord > Copy Channel ID
     const welcomeChannelId = '1359448418061123587'; 
-
     const channel = member.guild.channels.cache.get(welcomeChannelId);
 
     if (!channel) {
@@ -182,25 +179,23 @@ client.on(Events.GuildMemberAdd, async member => {
     }
 
     try {
-        // Create the Welcome Card
         const welcomeEmbed = new EmbedBuilder()
-        .setTitle('Reinforcements Inbound! 🎲')
-        .setDescription(
-            `Welcome **${member.displayName}** to **${member.guild.name}**!\n\n` +
-            `We've added you to our Looking For Game groups based on your choices.\n\n` +
-            `**Here’s how to get started:**\n` +
-            `1. **Introduce yourself** in this channel. Tell us a bit about yourself and any games you play!\n` +
-            `2. **Show off your projects** in <#1359454477127778425>.\n` +
-            `3. **Book a table** in <#1359456764638269601> or use the \`/reserve\` command!`
-        )
-         .setColor(0x5865F2) // Discord blurple
-        .setThumbnail(member.user.displayAvatarURL())
-        .setImage("https://cdn.discordapp.com/attachments/1365276092109426728/1446617773160796201/IGC_Banner.png?ex=6934a349&is=693351c9&hm=d2098af845e67761b18ddd00ad7d502b73de610ce87576e1eb75469b3c8ae103&") // <— add your banner link here
-        .setFooter({ text: 'Inverurie Gaming Club' });
+            .setTitle('Reinforcements Inbound! 🎲')
+            .setDescription(
+                `Welcome **${member.displayName}** to **${member.guild.name}**!\n\n` +
+                `We've added you to our Looking For Game groups based on your choices.\n\n` +
+                `**Here’s how to get started:**\n` +
+                `1. **Introduce yourself** in this channel. Tell us a bit about yourself and any games you play!\n` +
+                `2. **Show off your projects** in <#1359454477127778425>.\n` +
+                `3. **Book a table** in <#1359456764638269601> or use the \`/reserve\` command!`
+            )
+            .setColor(0x5865F2)
+            .setThumbnail(member.user.displayAvatarURL())
+            .setImage("https://cdn.discordapp.com/attachments/1365276092109426728/1446617773160796201/IGC_Banner.png")
+            .setFooter({ text: 'Inverurie Gaming Club' });
 
         await channel.send({ embeds: [welcomeEmbed] });
         console.log(`Sent welcome message for ${member.user.tag}`);
-
     } catch (error) {
         console.error('Error sending welcome message:', error);
     }
@@ -217,5 +212,5 @@ server.listen(5001);
 // Login to Discord
 client.login(process.env.DISCORD_TOKEN);
 
-// Export client for other modules (e.g., send DMs)
+// Export client for other modules
 module.exports = { client };

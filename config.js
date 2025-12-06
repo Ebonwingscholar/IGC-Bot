@@ -1,13 +1,16 @@
 module.exports = {
     // The Discord role ID that has admin privileges (can reset reservations)
     ADMIN_ROLE_ID: process.env.ADMIN_ROLE_ID || 'YOUR_ADMIN_ROLE_ID_HERE',
-    
+
     // Channel IDs where the bot can be used (leave empty to allow all channels)
     ALLOWED_CHANNEL_IDS: process.env.ALLOWED_CHANNEL_IDS ? process.env.ALLOWED_CHANNEL_IDS.split(',') : [],
-    
+
+    // Channel ID where the /who command is allowed
+    WHO_COMMAND_CHANNEL_ID: process.env.WHO_COMMAND_CHANNEL_ID || 'YOUR_WHO_CHANNEL_ID_HERE',
+
     // Command prefix for DM commands
     PREFIX: '!',
-    
+
     // Help message text
     HELP_TEXT: `
 **Wargaming Table Reservation Bot Commands:**
