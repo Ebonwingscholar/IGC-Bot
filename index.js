@@ -70,26 +70,14 @@ client.on(Events.InteractionCreate, async interaction => {
         // Channel restrictions
         if (interaction.channel && interaction.channel.type !== 'DM') {
             const allowedChannels = config.ALLOWED_CHANNEL_IDS;
-            const whoChannel = config.WHO_COMMAND_CHANNEL_ID;
 
-            if (interaction.commandName === 'who') {
-                // /who allowed only in its specific channel
-                if (interaction.channelId !== whoChannel) {
-                    await interaction.reply({
-                        content: `The /who command can only be used in <#${whoChannel}>.`,
-                        ephemeral: true
-                    });
-                    return;
-                }
-            } else {
-                // All other commands restricted to allowed channels
-                if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
-                    await interaction.reply({
-                        content: 'This command can only be used in designated channels or via DM.',
-                        ephemeral: true
-                    });
-                    return;
-                }
+            // Only restrict commands that are **not /who**
+            if (interaction.commandName !== 'who' && allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+                await interaction.reply({
+                    content: 'This command can only be used in designated channels or via DM.',
+                    ephemeral: true
+                });
+                return;
             }
         }
 

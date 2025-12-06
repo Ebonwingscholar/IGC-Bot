@@ -17,7 +17,7 @@ const GAME_ROLES_MENU = [
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('who')
+        .setName('whoplays')
         .setDescription('Show who is interested in a specific game'),
 
     async execute(interaction) {
