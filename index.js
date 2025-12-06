@@ -101,13 +101,13 @@ client.on(Events.InteractionCreate, async interaction => {
 
     // 🔹 Handle select menu interactions (for /who)
     if (interaction.isStringSelectMenu()) {
-        const command = client.commands.get('who');
+        const command = client.commands.get('whoplays');
 
         if (command && typeof command.select === 'function') {
             try {
                 await command.select(interaction);
             } catch (error) {
-                console.error('Error handling select menu for /who:', error);
+                console.error('Error handling select menu for /whoplays:', error);
                 await interaction.reply({
                     content: 'There was an error handling your selection.',
                     ephemeral: true
