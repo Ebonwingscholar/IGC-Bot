@@ -72,7 +72,7 @@ client.on(Events.InteractionCreate, async interaction => {
             const allowedChannels = config.ALLOWED_CHANNEL_IDS;
 
             // Only restrict commands that are **not /who**
-            if (interaction.commandName !== 'who' && allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+            if (interaction.commandName !== 'whoplays' && allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
                 await interaction.reply({
                     content: 'This command can only be used in designated channels or via DM.',
                     ephemeral: true
