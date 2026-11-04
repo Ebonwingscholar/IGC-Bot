@@ -1,4 +1,3 @@
-// utils/eventAutocomplete.js
 const eventStorage = require('./eventStorage');
 
 module.exports = async function eventAutocomplete(interaction) {
