@@ -1,45 +1,84 @@
 const { 
     SlashCommandBuilder, 
     ActionRowBuilder, 
-    ButtonBuilder, 
-    ButtonStyle, 
+    StringSelectMenuBuilder, 
+    StringSelectMenuOptionBuilder,
     ModalBuilder, 
     TextInputBuilder, 
-    TextInputStyle, 
-    EmbedBuilder 
+    TextInputStyle 
 } = require('discord.js');
 const tableManager = require('../utils/tableManager');
-const { isValidDate } = require('../utils/dateUtils');
 require('dotenv').config();
+
+/**
+ * Generates the next N upcoming Thursday dates (Day 4 = Thursday).
+ */
+function getUpcomingThursdays(count = 4) {
+    const thursdays = [];
+    const now = new Date();
+    
+    // Find the next Thursday
+    let d = new Date(now);
+    let dayOfWeek = d.getDay();
+    let daysUntilThu = (4 - dayOfWeek + 7) % 7;
+    
+    // If today is Thursday but past 22:00, start from next week
+    if (daysUntilThu === 0 && now.getHours() >= 22) {
+        daysUntilThu = 7;
+    }
+    
+    d.setDate(d.getDate() + daysUntilThu);
+
+    for (let i = 0; i < count; i++) {
+        const dateStr = d.toISOString().split('T')[0];
+        // Format nicely for humans e.g. "Thursday, 12 Nov 2026"
+        const label = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+        
+        thursdays.push({ label, value: dateStr });
+        
+        // Move to next Thursday
+        d.setDate(d.getDate() + 7);
+    }
+    
+    return thursdays;
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('reserve')
-        .setDescription('Reserve a table for your game'),
+        .setDescription('Reserve a table for an upcoming Thursday club night'),
 
     async execute(interaction) {
-        // Automatically open the modal form when /reserve is executed
-        return await this.showModal(interaction);
+        const thursdays = getUpcomingThursdays(4);
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_reserve_date')
+            .setPlaceholder('Choose a Thursday club session...')
+            .addOptions(
+                thursdays.map(t => new StringSelectMenuOptionBuilder()
+                    .setLabel(t.label)
+                    .setValue(t.value)
+                )
+            );
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+            content: '📅 **Inverurie Gaming Club - Table Reservation**\nSelect which Thursday session you would like to book a table for:',
+            components: [row],
+            ephemeral: true
+        });
     },
 
-    async showModal(interaction) {
+    // Handles the date selection from the dropdown and opens the modal
+    async handleSelectMenu(interaction) {
+        if (interaction.customId !== 'select_reserve_date') return;
+
+        const selectedDate = interaction.values[0];
+
         const modal = new ModalBuilder()
-            .setCustomId('reserve_table_modal')
-            .setTitle('Wargaming Table Reservation');
-
-        const dateInput = new TextInputBuilder()
-            .setCustomId('modal_date')
-            .setLabel('Date (YYYY-MM-DD)')
-            .setValue(new Date().toISOString().split('T')[0])
-            .setRequired(true)
-            .setStyle(TextInputStyle.Short);
-
-        const sessionInput = new TextInputBuilder()
-            .setCustomId('modal_session')
-            .setLabel('Session Slot (e.g. Evening 18:00-22:00)')
-            .setValue('Evening 18:00-22:00')
-            .setRequired(true)
-            .setStyle(TextInputStyle.Short);
+            .setCustomId(`reserve_modal_${selectedDate}`)
+            .setTitle(`Book Table (${selectedDate})`);
 
         const playersInput = new TextInputBuilder()
             .setCustomId('modal_players')
@@ -51,36 +90,32 @@ module.exports = {
         const gameInput = new TextInputBuilder()
             .setCustomId('modal_game')
             .setLabel('Game System / Scenario')
-            .setPlaceholder('e.g. Warhammer 40k 2000pts')
+            .setPlaceholder('e.g. Warhammer 40k 2000pts, BattleTech')
+            .setRequired(true)
+            .setStyle(TextInputStyle.Short);
+
+        const sessionInput = new TextInputBuilder()
+            .setCustomId('modal_session')
+            .setLabel('Session Slot')
+            .setValue('Evening 18:00-22:00')
             .setRequired(true)
             .setStyle(TextInputStyle.Short);
 
         modal.addComponents(
-            new ActionRowBuilder().addComponents(dateInput),
-            new ActionRowBuilder().addComponents(sessionInput),
             new ActionRowBuilder().addComponents(playersInput),
-            new ActionRowBuilder().addComponents(gameInput)
+            new ActionRowBuilder().addComponents(gameInput),
+            new ActionRowBuilder().addComponents(sessionInput)
         );
 
         await interaction.showModal(modal);
     },
 
     async handleModalSubmit(interaction) {
-        const date = interaction.fields.getTextInputValue('modal_date').trim();
+        // Extract date from customId (e.g. "reserve_modal_2026-11-12")
+        const targetDate = interaction.customId.replace('reserve_modal_', '');
         const session = interaction.fields.getTextInputValue('modal_session').trim();
         const playerNames = interaction.fields.getTextInputValue('modal_players').trim();
         const gameName = interaction.fields.getTextInputValue('modal_game').trim();
-
-        if (!isValidDate(date)) {
-            await interaction.reply({ content: '❌ Please provide a valid calendar date in YYYY-MM-DD format.', ephemeral: true });
-            return;
-        }
-
-        const today = new Date().toISOString().split('T')[0];
-        if (date < today) {
-            await interaction.reply({ content: '❌ You cannot book a table for a date in the past.', ephemeral: true });
-            return;
-        }
 
         try {
             const tableNumber = tableManager.addReservation(
@@ -88,47 +123,18 @@ module.exports = {
                 interaction.user.tag,
                 playerNames,
                 gameName,
-                date,
+                targetDate,
                 session
             );
 
-            await this.sendPaymentReminder([interaction.user], tableNumber, playerNames, gameName, date);
+            await this.sendPaymentReminder([interaction.user], tableNumber, playerNames, gameName, targetDate);
 
             await interaction.reply({
-                content: `✅ Table ${tableNumber} reserved for **${playerNames}** playing **${gameName}** on **${date}** (${session})!`,
+                content: `✅ Table ${tableNumber} reserved for **${playerNames}** playing **${gameName}** on **Thursday, ${targetDate}** (${session})!`,
                 ephemeral: true
             });
         } catch (err) {
             await interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
-        }
-    },
-
-    async handleDM(message, detailsText) {
-        const userId = message.author.id;
-        const username = message.author.tag;
-
-        if (!detailsText || detailsText.trim() === '') {
-            await message.reply('Format: `!reserve Player1, Player2 + Game Name`');
-            return;
-        }
-
-        try {
-            let playerNames, gameName;
-            if (detailsText.includes('+')) {
-                const parts = detailsText.split('+');
-                playerNames = parts[0].trim();
-                gameName = parts[1].trim();
-            } else {
-                playerNames = detailsText.trim();
-                gameName = 'Unspecified Game';
-            }
-
-            const date = new Date().toISOString().split('T')[0];
-            const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName, date);
-            await this.sendPaymentReminder([{ id: userId }], tableNumber, playerNames, gameName, date);
-            await message.reply(`Table ${tableNumber} reserved for ${playerNames} playing ${gameName} on ${date}.`);
-        } catch (error) {
-            await message.reply(`Error: ${error.message}`);
         }
     },
 
@@ -137,7 +143,7 @@ module.exports = {
             const { client } = require('../index');
             const reminderMessage = `
 **Payment Reminder for Table ${tableNumber}**
-Event/Session Date: **${date}**
+Session Date: **Thursday, ${date}**
 Reservation: ${playerNames} — Game: ${gameName}
 
 Please pay your table fee before playing.
