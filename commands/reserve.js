@@ -124,6 +124,9 @@ module.exports = {
     async handleModalSubmit(interaction) {
         if (interaction.customId !== 'reserve_final_modal') return;
 
+        // Acknowledge interaction immediately to prevent 3-second modal timeout
+        await interaction.deferReply({ ephemeral: true });
+
         const sessionData = activeReservations.get(interaction.user.id) || {};
         const targetDate = sessionData.date;
         const playerIds = sessionData.playerIds || [];
@@ -165,14 +168,44 @@ module.exports = {
             // Send DMs to ALL tagged players
             await this.sendPaymentReminder(playerIds, tableNumber, playerNames, gameName, targetDate);
 
+            // Clean up session state after asynchronous tasks finish
             activeReservations.delete(interaction.user.id);
 
-            await interaction.reply({
-                content: `✅ Table ${tableNumber} reserved for **${playerNames}** playing **${gameName}** on **Thursday, ${targetDate}** (${session})!\n💳 Payment reminders have been DMed to all participants.`,
-                ephemeral: true
+            // Edit deferred reply with confirmation message
+            await interaction.editReply({
+                content: `✅ Table ${tableNumber} reserved for **${playerNames}** playing **${gameName}** on **Thursday, ${targetDate}** (${session})!\n💳 Payment reminders have been DMed to all participants.`
             });
         } catch (err) {
-            await interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
+            await interaction.editReply({ content: `❌ ${err.message}` });
+        }
+    },
+
+    async handleDM(message, detailsText) {
+        const userId = message.author.id;
+        const username = message.author.tag;
+
+        if (!detailsText || detailsText.trim() === '') {
+            await message.reply('Format: `!reserve Player1, Player2 + Game Name`');
+            return;
+        }
+
+        try {
+            let playerNames, gameName;
+            if (detailsText.includes('+')) {
+                const parts = detailsText.split('+');
+                playerNames = parts[0].trim();
+                gameName = parts[1].trim();
+            } else {
+                playerNames = detailsText.trim();
+                gameName = 'Unspecified Game';
+            }
+
+            const targetDate = getUpcomingThursdays(1)[0].value;
+            const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName, targetDate);
+            await this.sendPaymentReminder([userId], tableNumber, playerNames, gameName, targetDate);
+            await message.reply(`Table ${tableNumber} reserved for ${playerNames} playing ${gameName} on ${targetDate}.`);
+        } catch (error) {
+            await message.reply(`Error: ${error.message}`);
         }
     },
 
