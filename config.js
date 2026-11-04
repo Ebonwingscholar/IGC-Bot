@@ -1,35 +1,19 @@
 module.exports = {
-    // The Discord role ID that has admin privileges (can reset reservations)
     ADMIN_ROLE_ID: process.env.ADMIN_ROLE_ID || 'YOUR_ADMIN_ROLE_ID_HERE',
-
-    // Channel IDs where the bot can be used (leave empty to allow all channels)
     ALLOWED_CHANNEL_IDS: process.env.ALLOWED_CHANNEL_IDS ? process.env.ALLOWED_CHANNEL_IDS.split(',') : [],
-
-    // Channel ID where the /who command is allowed
-    WHO_COMMAND_CHANNEL_ID: process.env.WHO_COMMAND_CHANNEL_ID || 'YOUR_WHO_CHANNEL_ID_HERE',
-
-    // Command prefix for DM commands
     PREFIX: '!',
-
-    // Help message text
     HELP_TEXT: `
-**Wargaming Table Reservation Bot Commands:**
-- \`/reserve\` - Reserve a table by @mentioning players and specifying the game
-- \`/cancel\` - Cancel your reservation
-- \`/view\` - View all current reservations
-- \`/reset\` - Reset all reservations (Admin only)
-- \`/canceltable <table>\` - Cancel a specific table reservation (Admin only)
-- \`/adminreserve\` - Reserve a specific table for players (Admin only)
-
-You can also use these commands in DMs with the bot:
-- \`!reserve <player names> + <game name>\` - Reserve a table
-- \`!cancel\` - Cancel your reservation
-- \`!view\` - View all current reservations
-- \`!reset\` - Reset all reservations (Admin only)
-- \`!canceltable <table number>\` - Cancel a specific table reservation (Admin only)
-- \`!adminreserve <table number> <player names> + <game name>\` - Reserve a specific table (Admin only)
-- \`!help\` - Show this help message
-
-**Note:** Slash commands support @mentioning players instead of typing names manually.
+**Inverurie Gaming Club Bot Commands:**
+- \`/createevent\` - Create a new club event (Admin only)
+- \`/bookevent\` - Book a table for an upcoming event
+- \`/viewevents\` - View all upcoming events and player bookings
+- \`/canceleventbooking\` - Cancel your event booking
+- \`/stopevent\` - Cancel/delete an entire event (Admin only)
+- \`/reserve\` - Open reservation modal / reserve a table for a date and session
+- \`/cancel\` - Cancel your table reservation
+- \`/view\` - View current table reservations
+- \`/reset\` - Reset all general reservations (Admin only)
+- \`/canceltable\` - Cancel a specific table (Admin only)
+- \`/adminreserve\` - Reserve a specific table (Admin only)
     `
 };
