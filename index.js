@@ -1,155 +1,93 @@
-require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { Client, Collection, GatewayIntentBits, Events } = require('discord.js');
-const config = require('./config');
+const { Client, GatewayIntentBits, Collection } = require('discord.js');
+require('dotenv').config();
 
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir);
-}
-
-const client = new Client({ 
+const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
-    ] 
+        GatewayIntentBits.MessageContent
+    ]
 });
 
 client.commands = new Collection();
 
+// Load command files dynamically
 const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-
-    if ('data' in command && 'execute' in command) {
-        client.commands.set(command.data.name, command);
-    } else {
-        console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+if (fs.existsSync(commandsPath)) {
+    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+    for (const file of commandFiles) {
+        const filePath = path.join(commandsPath, file);
+        const command = require(filePath);
+        // Ensure command has 'data' property (relaxed check so reserve.js loads properly)
+        if (command && command.data && command.data.name) {
+            client.commands.set(command.data.name, command);
+        }
     }
 }
 
-client.once(Events.ClientReady, () => {
-    console.log(`Logged in as ${client.user.tag}`);
-    console.log(`Bot is in ${client.guilds.cache.size} servers`);
+// Updated to clientReady for Discord.js v15 compatibility
+client.once('clientReady', () => {
+    console.log(`🤖 Logged in as ${client.user.tag}`);
+    console.log(`Loaded commands: ${Array.from(client.commands.keys()).join(', ')}`);
 });
 
-client.on(Events.InteractionCreate, async interaction => {
-    if (interaction.isAutocomplete()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command || !command.autocomplete) return;
-
-        try {
-            await command.autocomplete(interaction);
-        } catch (error) {
-            console.error(`Error handling autocomplete for ${interaction.commandName}:`, error);
-        }
-        return;
-    }
-
-    if (interaction.isButton()) {
-        if (interaction.customId === 'open_reserve_modal') {
-            const reserveCmd = client.commands.get('reserve');
-            if (reserveCmd && typeof reserveCmd.showModal === 'function') {
-                return await reserveCmd.showModal(interaction);
+// Central interaction router
+client.on('interactionCreate', async interaction => {
+    try {
+        // 1. Handle Slash Commands
+        if (interaction.isChatInputCommand()) {
+            const command = client.commands.get(interaction.commandName);
+            if (command && typeof command.execute === 'function') {
+                await command.execute(interaction);
             }
         }
-        return;
-    }
-
-    if (interaction.isModalSubmit()) {
-        if (interaction.customId === 'reserve_table_modal') {
-            const reserveCmd = client.commands.get('reserve');
-            if (reserveCmd && typeof reserveCmd.handleModalSubmit === 'function') {
-                return await reserveCmd.handleModalSubmit(interaction);
-            }
-        }
-        return;
-    }
-
-    if (interaction.isChatInputCommand()) {
-        if (interaction.channel && interaction.channel.type !== 'DM') {
-            const allowedChannels = config.ALLOWED_CHANNEL_IDS;
-            if (
-                interaction.commandName !== 'whoplays' && 
-                allowedChannels.length > 0 &&
-                !allowedChannels.includes(interaction.channelId)
-            ) {
-                await interaction.reply({
-                    content: 'This command can only be used in designated channels or via DM.',
-                    ephemeral: true
-                });
-                return;
-            }
-        }
-
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
-
-        try {
-            await command.execute(interaction);
-        } catch (error) {
-            console.error(`Error executing command ${interaction.commandName}:`, error);
-            const errorMessage = 'There was an error while executing this command!';
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: errorMessage, ephemeral: true });
-            } else {
-                await interaction.reply({ content: errorMessage, ephemeral: true });
-            }
-        }
-        return;
-    }
-});
-
-client.on(Events.MessageCreate, async message => {
-    if (message.author.bot || message.channel.type !== 'DM') return;
-
-    const content = message.content.trim();
-    const args = content.split(/\s+/);
-    const command = args.shift().toLowerCase();
-
-    const commandMap = {
-        '!reserve': 'reserve',
-        '!cancel': 'cancel',
-        '!view': 'view',
-        '!reset': 'reset',
-        '!canceltable': 'canceltable',
-        '!adminreserve': 'adminreserve'
-    };
-
-    if (commandMap[command]) {
-        const cmd = client.commands.get(commandMap[command]);
-        if (cmd) {
-            try {
-                if (['!reserve', '!adminreserve', '!canceltable', '!cancel'].includes(command)) {
-                    await cmd.handleDM(message, args.join(' '));
-                } else {
-                    await cmd.handleDM(message);
+        
+        // 2. Handle Select Menu (Thursday Session Dropdown)
+        else if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'select_reserve_date') {
+                const reserveCommand = client.commands.get('reserve');
+                if (reserveCommand && typeof reserveCommand.handleSelectMenu === 'function') {
+                    await reserveCommand.handleSelectMenu(interaction);
                 }
-            } catch (error) {
-                console.error(error);
-                await message.reply(`There was an error processing your request. Please try again.`);
             }
         }
-    } else if (command === '!help') {
-        await message.reply(config.HELP_TEXT);
-    } else {
-        await message.reply(`I don't recognize that command. Type \`!help\` for available commands.`);
+
+        // 3. Handle Modal Submissions
+        else if (interaction.isModalSubmit()) {
+            if (interaction.customId.startsWith('reserve_modal_')) {
+                const reserveCommand = client.commands.get('reserve');
+                if (reserveCommand && typeof reserveCommand.handleModalSubmit === 'function') {
+                    await reserveCommand.handleModalSubmit(interaction);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error handling interaction:', error);
+        const errorMessage = { content: '❌ An error occurred while processing this action.', ephemeral: true };
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(errorMessage).catch(() => {});
+        } else {
+            await interaction.reply(errorMessage).catch(() => {});
+        }
     }
 });
 
-// const http = require('http');
-// const server = http.createServer((req, res) => {
-//    res.writeHead(200);
-//    res.end('Bot is online!');
-// });
-// server.listen(5001);
+// Handle direct message fallback (!reserve)
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
+
+    if (message.content.startsWith('!reserve')) {
+        const reserveCommand = client.commands.get('reserve');
+        if (reserveCommand && typeof reserveCommand.handleDM === 'function') {
+            const detailsText = message.content.slice(8).trim();
+            await reserveCommand.handleDM(message, detailsText);
+        }
+    }
+});
 
 client.login(process.env.DISCORD_TOKEN);
+
 module.exports = { client };
