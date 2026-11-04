@@ -13,10 +13,10 @@ function loadEvents() {
     if (!fs.existsSync(eventsFilePath)) return [];
     const raw = fs.readFileSync(eventsFilePath, 'utf-8');
     const events = JSON.parse(raw);
-    // Normalize shape
     for (const ev of events) {
       if (!Array.isArray(ev.bookings)) ev.bookings = [];
       if (typeof ev.active === 'undefined') ev.active = true;
+      if (typeof ev.maxTables !== 'number') ev.maxTables = 15;
     }
     return events;
   } catch (err) {
@@ -85,10 +85,8 @@ function removeBookingByUserAndEvent(userId, eventName) {
 }
 
 module.exports = {
-  // existing API
   loadEvents,
   saveEvents,
-  // new helpers used by your commands
   getEvents,
   getEventByName,
   deleteEvent,
