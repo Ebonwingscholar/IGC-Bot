@@ -1,16 +1,14 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { Client, Collection, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, Events } = require('discord.js');
 const config = require('./config');
 
-// Create data directory if it doesn't exist
 const dataDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir);
 }
 
-// Initialize bot with necessary intents
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds,
@@ -23,7 +21,6 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// Load command files
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
@@ -38,19 +35,12 @@ for (const file of commandFiles) {
     }
 }
 
-// Ready event
 client.once(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user.tag}`);
     console.log(`Bot is in ${client.guilds.cache.size} servers`);
-    client.guilds.cache.forEach(guild => {
-        console.log(`- ${guild.name} (${guild.id})`);
-    });
 });
 
-// Handle slash commands & autocomplete
 client.on(Events.InteractionCreate, async interaction => {
-
-    // ---------- AUTOCOMPLETE ----------
     if (interaction.isAutocomplete()) {
         const command = client.commands.get(interaction.commandName);
         if (!command || !command.autocomplete) return;
@@ -63,14 +53,29 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
 
-    // ---------- SLASH COMMANDS ----------
-    if (interaction.isChatInputCommand()) {
-        console.log(`Received slash command: ${interaction.commandName}`);
+    if (interaction.isButton()) {
+        if (interaction.customId === 'open_reserve_modal') {
+            const reserveCmd = client.commands.get('reserve');
+            if (reserveCmd && typeof reserveCmd.showModal === 'function') {
+                return await reserveCmd.showModal(interaction);
+            }
+        }
+        return;
+    }
 
-        // Channel restrictions EXCEPT for /whoplays
+    if (interaction.isModalSubmit()) {
+        if (interaction.customId === 'reserve_table_modal') {
+            const reserveCmd = client.commands.get('reserve');
+            if (reserveCmd && typeof reserveCmd.handleModalSubmit === 'function') {
+                return await reserveCmd.handleModalSubmit(interaction);
+            }
+        }
+        return;
+    }
+
+    if (interaction.isChatInputCommand()) {
         if (interaction.channel && interaction.channel.type !== 'DM') {
             const allowedChannels = config.ALLOWED_CHANNEL_IDS;
-
             if (
                 interaction.commandName !== 'whoplays' && 
                 allowedChannels.length > 0 &&
@@ -98,36 +103,10 @@ client.on(Events.InteractionCreate, async interaction => {
                 await interaction.reply({ content: errorMessage, ephemeral: true });
             }
         }
-
-        return;
-    }
-
-    // ---------- SELECT MENU INTERACTIONS (for /whoplays) ----------
-    if (interaction.isStringSelectMenu()) {
-
-        // Only handle menus created by /whoplays
-        if (interaction.customId.startsWith('whoplays')) {
-
-            const command = client.commands.get('whoplays');
-
-            if (command && typeof command.select === 'function') {
-                try {
-                    return await command.select(interaction);
-                } catch (error) {
-                    console.error('Error handling select menu for /whoplays:', error);
-                    return interaction.reply({
-                        content: 'There was an error handling your selection.',
-                        ephemeral: true
-                    });
-                }
-            }
-        }
-
         return;
     }
 });
 
-// ---------- DIRECT MESSAGE COMMANDS ----------
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot || message.channel.type !== 'DM') return;
 
@@ -148,7 +127,7 @@ client.on(Events.MessageCreate, async message => {
         const cmd = client.commands.get(commandMap[command]);
         if (cmd) {
             try {
-                if (command === '!reserve' || command === '!adminreserve' || command === '!canceltable') {
+                if (['!reserve', '!adminreserve', '!canceltable', '!cancel'].includes(command)) {
                     await cmd.handleDM(message, args.join(' '));
                 } else {
                     await cmd.handleDM(message);
@@ -161,44 +140,10 @@ client.on(Events.MessageCreate, async message => {
     } else if (command === '!help') {
         await message.reply(config.HELP_TEXT);
     } else {
-        await message.reply(`I don't recognize that command. Type \`!help\` for a list of available commands.`);
+        await message.reply(`I don't recognize that command. Type \`!help\` for available commands.`);
     }
 });
 
-// ---------- NEW MEMBER WELCOME ----------
-client.on(Events.GuildMemberAdd, async member => {
-    const welcomeChannelId = '1359448418061123587'; 
-    const channel = member.guild.channels.cache.get(welcomeChannelId);
-
-    if (!channel) {
-        console.log(`Could not find welcome channel ${welcomeChannelId}`);
-        return;
-    }
-
-    try {
-        const welcomeEmbed = new EmbedBuilder()
-            .setTitle('Reinforcements Inbound! 🎲')
-            .setDescription(
-                `Welcome **${member.displayName}** to **${member.guild.name}**!\n\n` +
-                `We've added you to our Looking For Game groups based on your choices.\n\n` +
-                `**Here’s how to get started:**\n` +
-                `1. **Introduce yourself** in this channel.\n` +
-                `2. **Show off your projects** in <#1359454477127778425>.\n` +
-                `3. **Book a table** in <#1359456764638269601> or use the \`/reserve\` command!`
-            )
-            .setColor(0x5865F2)
-            .setThumbnail(member.user.displayAvatarURL())
-            .setImage("https://cdn.discordapp.com/attachments/1365276092109426728/1446617773160796201/IGC_Banner.png")
-            .setFooter({ text: 'Inverurie Gaming Club' });
-
-        await channel.send({ embeds: [welcomeEmbed] });
-        console.log(`Sent welcome message for ${member.user.tag}`);
-    } catch (error) {
-        console.error('Error sending welcome message:', error);
-    }
-});
-
-// ---------- HTTP SERVER FOR UPTIME ----------
 const http = require('http');
 const server = http.createServer((req, res) => {
     res.writeHead(200);
@@ -206,7 +151,5 @@ const server = http.createServer((req, res) => {
 });
 server.listen(5001);
 
-// ---------- LOGIN ----------
 client.login(process.env.DISCORD_TOKEN);
-
 module.exports = { client };
