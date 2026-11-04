@@ -3,6 +3,7 @@ const {
     ActionRowBuilder, 
     StringSelectMenuBuilder, 
     StringSelectMenuOptionBuilder,
+    UserSelectMenuBuilder,
     ModalBuilder, 
     TextInputBuilder, 
     TextInputStyle 
@@ -10,19 +11,16 @@ const {
 const tableManager = require('../utils/tableManager');
 require('dotenv').config();
 
-/**
- * Generates the next N upcoming Thursday dates (Day 4 = Thursday).
- */
+// Temporary memory store for multi-step ephemeral flows (date & players selected)
+const activeReservations = new Map();
+
 function getUpcomingThursdays(count = 4) {
     const thursdays = [];
     const now = new Date();
-    
-    // Find the next Thursday
     let d = new Date(now);
     let dayOfWeek = d.getDay();
     let daysUntilThu = (4 - dayOfWeek + 7) % 7;
     
-    // If today is Thursday but past 22:00, start from next week
     if (daysUntilThu === 0 && now.getHours() >= 22) {
         daysUntilThu = 7;
     }
@@ -31,15 +29,10 @@ function getUpcomingThursdays(count = 4) {
 
     for (let i = 0; i < count; i++) {
         const dateStr = d.toISOString().split('T')[0];
-        // Format nicely for humans e.g. "Thursday, 12 Nov 2026"
         const label = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
-        
         thursdays.push({ label, value: dateStr });
-        
-        // Move to next Thursday
         d.setDate(d.getDate() + 7);
     }
-    
     return thursdays;
 }
 
@@ -53,7 +46,7 @@ module.exports = {
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId('select_reserve_date')
-            .setPlaceholder('Choose a Thursday club session...')
+            .setPlaceholder('1️⃣ Choose a Thursday club session...')
             .addOptions(
                 thursdays.map(t => new StringSelectMenuOptionBuilder()
                     .setLabel(t.label)
@@ -64,28 +57,46 @@ module.exports = {
         const row = new ActionRowBuilder().addComponents(selectMenu);
 
         await interaction.reply({
-            content: '📅 **Inverurie Gaming Club - Table Reservation**\nSelect which Thursday session you would like to book a table for:',
+            content: '📅 **Inverurie Gaming Club - Table Reservation**\nStep 1 of 2: Select your club session date:',
             components: [row],
             ephemeral: true
         });
     },
 
-    // Handles the date selection from the dropdown and opens the modal
+    // Step 1: Date Selected -> Prompt for Players using a User Select Menu
     async handleSelectMenu(interaction) {
         if (interaction.customId !== 'select_reserve_date') return;
 
         const selectedDate = interaction.values[0];
 
-        const modal = new ModalBuilder()
-            .setCustomId(`reserve_modal_${selectedDate}`)
-            .setTitle(`Book Table (${selectedDate})`);
+        // Store date temporarily for this user
+        activeReservations.set(interaction.user.id, { date: selectedDate });
 
-        const playersInput = new TextInputBuilder()
-            .setCustomId('modal_players')
-            .setLabel('Players / Opponents')
-            .setPlaceholder('e.g. Grant, Jason')
-            .setRequired(true)
-            .setStyle(TextInputStyle.Short);
+        const userSelect = new UserSelectMenuBuilder()
+            .setCustomId('select_reserve_players')
+            .setPlaceholder('Select gaming partners / opponents...')
+            .setMinValues(1)
+            .setMaxValues(3); // Up to 3 additional players
+
+        const row = new ActionRowBuilder().addComponents(userSelect);
+
+        await interaction.update({
+            content: `📅 Date selected: **Thursday, ${selectedDate}**\n\nStep 2 of 2: Tag or select your playing partners below (you are included automatically):`,
+            components: [row]
+        });
+    },
+
+    // Step 2: Players Selected -> Open Modal for Game & Session
+    async handleUserSelect(interaction) {
+        if (interaction.customId !== 'select_reserve_players') return;
+
+        const sessionData = activeReservations.get(interaction.user.id) || {};
+        sessionData.playerIds = interaction.values; // Array of selected user IDs
+        activeReservations.set(interaction.user.id, sessionData);
+
+        const modal = new ModalBuilder()
+            .setCustomId('reserve_final_modal')
+            .setTitle('Finalise Table Reservation');
 
         const gameInput = new TextInputBuilder()
             .setCustomId('modal_game')
@@ -102,7 +113,6 @@ module.exports = {
             .setStyle(TextInputStyle.Short);
 
         modal.addComponents(
-            new ActionRowBuilder().addComponents(playersInput),
             new ActionRowBuilder().addComponents(gameInput),
             new ActionRowBuilder().addComponents(sessionInput)
         );
@@ -110,14 +120,39 @@ module.exports = {
         await interaction.showModal(modal);
     },
 
+    // Step 3: Modal Submitted -> Save & DM All Tagged Users
     async handleModalSubmit(interaction) {
-        // Extract date from customId (e.g. "reserve_modal_2026-11-12")
-        const targetDate = interaction.customId.replace('reserve_modal_', '');
+        if (interaction.customId !== 'reserve_final_modal') return;
+
+        const sessionData = activeReservations.get(interaction.user.id) || {};
+        const targetDate = sessionData.date;
+        const playerIds = sessionData.playerIds || [];
+        
+        // Ensure the person making the reservation is included in the list
+        if (!playerIds.includes(interaction.user.id)) {
+            playerIds.unshift(interaction.user.id);
+        }
+
         const session = interaction.fields.getTextInputValue('modal_session').trim();
-        const playerNames = interaction.fields.getTextInputValue('modal_players').trim();
         const gameName = interaction.fields.getTextInputValue('modal_game').trim();
 
         try {
+            // Fetch guild member display names for nice formatting
+            const playerNamesArray = await Promise.all(playerIds.map(async id => {
+                try {
+                    if (interaction.guild) {
+                        const member = await interaction.guild.members.fetch(id);
+                        return member.displayName || member.user.username;
+                    }
+                    const user = await interaction.client.users.fetch(id);
+                    return user.username;
+                } catch {
+                    return 'Player';
+                }
+            }));
+
+            const playerNames = playerNamesArray.join(', ');
+
             const tableNumber = tableManager.addReservation(
                 interaction.user.id,
                 interaction.user.tag,
@@ -127,10 +162,13 @@ module.exports = {
                 session
             );
 
-            await this.sendPaymentReminder([interaction.user], tableNumber, playerNames, gameName, targetDate);
+            // Send DMs to ALL tagged players
+            await this.sendPaymentReminder(playerIds, tableNumber, playerNames, gameName, targetDate);
+
+            activeReservations.delete(interaction.user.id);
 
             await interaction.reply({
-                content: `✅ Table ${tableNumber} reserved for **${playerNames}** playing **${gameName}** on **Thursday, ${targetDate}** (${session})!`,
+                content: `✅ Table ${tableNumber} reserved for **${playerNames}** playing **${gameName}** on **Thursday, ${targetDate}** (${session})!\n💳 Payment reminders have been DMed to all participants.`,
                 ephemeral: true
             });
         } catch (err) {
@@ -138,7 +176,7 @@ module.exports = {
         }
     },
 
-    async sendPaymentReminder(users, tableNumber, playerNames, gameName, date) {
+    async sendPaymentReminder(userIds, tableNumber, playerNames, gameName, date) {
         try {
             const { client } = require('../index');
             const reminderMessage = `
@@ -152,12 +190,12 @@ Please pay your table fee before playing.
 - **Sort Code:** ${process.env.BANK_SORT_CODE || '12-34-56'}
 - **Account Number:** ${process.env.BANK_ACCOUNT_NUMBER || '12345678'}
 
-Reference: "D Smith ${date}"
+Reference: "Table ${tableNumber} ${date}"
             `;
-            for (const user of users) {
+            for (const id of userIds) {
                 try {
-                    const fetchedUser = await client.users.fetch(user.id);
-                    if (fetchedUser) await fetchedUser.send(reminderMessage);
+                    const user = await client.users.fetch(id);
+                    if (user) await user.send(reminderMessage);
                 } catch {}
             }
         } catch (error) {
