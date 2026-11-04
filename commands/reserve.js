@@ -1,46 +1,195 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { 
+    SlashCommandBuilder, 
+    ActionRowBuilder, 
+    StringSelectMenuBuilder, 
+    StringSelectMenuOptionBuilder,
+    UserSelectMenuBuilder,
+    ModalBuilder, 
+    TextInputBuilder, 
+    TextInputStyle 
+} = require('discord.js');
 const tableManager = require('../utils/tableManager');
-require('dotenv').config(); // Load env vars
+require('dotenv').config();
+
+// Temporary memory store for multi-step ephemeral flows (date & players selected)
+const activeReservations = new Map();
+
+/**
+ * Calculates upcoming fortnightly (every 2nd week) Thursday club dates.
+ * Anchor set to Thursday, 5 November 2026.
+ */
+function getUpcomingThursdays(count = 4) {
+    const thursdays = [];
+    const now = new Date();
+
+    // Anchor Date: Thursday, 5 November 2026
+    const anchorDate = new Date(2026, 10, 5); 
+    anchorDate.setHours(0, 0, 0, 0);
+
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const msPerFortnight = 14 * msPerDay;
+
+    let currentSession = new Date(anchorDate.getTime());
+    
+    // Cutoff on session day at 22:00
+    const todayCutoff = new Date(now);
+    todayCutoff.setHours(22, 0, 0, 0);
+
+    while (currentSession < now && (now.toDateString() !== currentSession.toDateString() || now > todayCutoff)) {
+        currentSession = new Date(currentSession.getTime() + msPerFortnight);
+    }
+
+    for (let i = 0; i < count; i++) {
+        const dateStr = currentSession.toISOString().split('T')[0];
+        const label = currentSession.toLocaleDateString('en-GB', { 
+            weekday: 'long', 
+            day: 'numeric', 
+            month: 'short', 
+            year: 'numeric' 
+        });
+
+        thursdays.push({ label, value: dateStr });
+        currentSession = new Date(currentSession.getTime() + msPerFortnight);
+    }
+
+    return thursdays;
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('reserve')
-        .setDescription('Reserve a table for your game')
-        .addUserOption(option =>
-            option.setName('player1').setDescription('First player (yourself or someone else)').setRequired(true))
-        .addStringOption(option =>
-            option.setName('game').setDescription('Name of the game you will be playing').setRequired(true))
-        .addUserOption(option =>
-            option.setName('player2').setDescription('Second player').setRequired(false))
-        .addUserOption(option =>
-            option.setName('player3').setDescription('Third player').setRequired(false))
-        .addUserOption(option =>
-            option.setName('player4').setDescription('Fourth player').setRequired(false))
-        .addUserOption(option =>
-            option.setName('player5').setDescription('Fifth player').setRequired(false))
-        .addUserOption(option =>
-            option.setName('player6').setDescription('Sixth player').setRequired(false)),
+        .setDescription('Reserve a table for an upcoming fortnightly Thursday club night'),
 
     async execute(interaction) {
-        const userId = interaction.user.id;
-        const username = interaction.user.tag;
+        const thursdays = getUpcomingThursdays(4);
 
-        const players = [];
-        for (let i = 1; i <= 6; i++) {
-            const user = interaction.options.getUser(`player${i}`);
-            if (user) {
-                players.push(user);
-            }
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_reserve_date')
+            .setPlaceholder('1️⃣ Choose a Thursday club session...')
+            .addOptions(
+                thursdays.map(t => new StringSelectMenuOptionBuilder()
+                    .setLabel(t.label)
+                    .setValue(t.value)
+                )
+            );
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+            content: '📅 **Inverurie Gaming Club - Table Reservation**\nStep 1 of 2: Select your fortnightly club session date:',
+            components: [row],
+            ephemeral: true
+        });
+    },
+
+    // Step 1: Date Selected -> Prompt for Players using User Select Menu
+    async handleSelectMenu(interaction) {
+        if (interaction.customId !== 'select_reserve_date') return;
+
+        const selectedDate = interaction.values[0];
+
+        activeReservations.set(interaction.user.id, { date: selectedDate });
+
+        const userSelect = new UserSelectMenuBuilder()
+            .setCustomId('select_reserve_players')
+            .setPlaceholder('Select gaming partners / opponents...')
+            .setMinValues(1)
+            .setMaxValues(5);
+
+        const row = new ActionRowBuilder().addComponents(userSelect);
+
+        await interaction.update({
+            content: `📅 Date selected: **Thursday, ${selectedDate}**\n\nStep 2 of 2: Tag or select your playing partners below (you are included automatically):`,
+            components: [row]
+        });
+    },
+
+    // Step 2: Players Selected -> Open Modal for Game & Session
+    async handleUserSelect(interaction) {
+        if (interaction.customId !== 'select_reserve_players') return;
+
+        const sessionData = activeReservations.get(interaction.user.id) || {};
+        sessionData.playerIds = interaction.values;
+        activeReservations.set(interaction.user.id, sessionData);
+
+        const modal = new ModalBuilder()
+            .setCustomId('reserve_final_modal')
+            .setTitle('Finalise Table Reservation');
+
+        const gameInput = new TextInputBuilder()
+            .setCustomId('modal_game')
+            .setLabel('Game System / Scenario')
+            .setPlaceholder('e.g. Warhammer 40k 2000pts, BattleTech')
+            .setRequired(true)
+            .setStyle(TextInputStyle.Short);
+
+        const sessionInput = new TextInputBuilder()
+            .setCustomId('modal_session')
+            .setLabel('Session Slot')
+            .setValue('Evening 18:00-22:00')
+            .setRequired(true)
+            .setStyle(TextInputStyle.Short);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(gameInput),
+            new ActionRowBuilder().addComponents(sessionInput)
+        );
+
+        await interaction.showModal(modal);
+    },
+
+    // Step 3: Modal Submitted -> Save & DM All Tagged Users
+    async handleModalSubmit(interaction) {
+        if (interaction.customId !== 'reserve_final_modal') return;
+
+        // Defer reply immediately to prevent Discord 3-second timeout
+        await interaction.deferReply({ ephemeral: true });
+
+        const sessionData = activeReservations.get(interaction.user.id) || {};
+        const targetDate = sessionData.date;
+        const playerIds = sessionData.playerIds || [];
+        
+        if (!playerIds.includes(interaction.user.id)) {
+            playerIds.unshift(interaction.user.id);
         }
 
-        const gameName = interaction.options.getString('game');
+        const session = interaction.fields.getTextInputValue('modal_session').trim();
+        const gameName = interaction.fields.getTextInputValue('modal_game').trim();
 
         try {
-            const result = await this.processReservationWithUsers(userId, username, players, gameName, interaction.guild);
-            await interaction.reply(result);
-        } catch (error) {
-            console.error('Error in reserve command:', error);
-            await interaction.reply({ content: 'An error occurred while processing your reservation. Please try again.', ephemeral: true });
+            const playerNamesArray = await Promise.all(playerIds.map(async id => {
+                try {
+                    if (interaction.guild) {
+                        const member = await interaction.guild.members.fetch(id);
+                        return member.displayName || member.user.username;
+                    }
+                    const user = await interaction.client.users.fetch(id);
+                    return user.username;
+                } catch {
+                    return 'Player';
+                }
+            }));
+
+            const playerNames = playerNamesArray.join(', ');
+
+            const tableNumber = tableManager.addReservation(
+                interaction.user.id,
+                interaction.user.tag,
+                playerNames,
+                gameName,
+                targetDate,
+                session
+            );
+
+            await this.sendPaymentReminder(playerIds, tableNumber, playerNames, gameName, targetDate);
+
+            activeReservations.delete(interaction.user.id);
+
+            await interaction.editReply({
+                content: `✅ Table ${tableNumber} reserved for **${playerNames}** playing **${gameName}** on **Thursday, ${targetDate}** (${session})!\n💳 Payment reminders have been DMed to all participants.`
+            });
+        } catch (err) {
+            await interaction.editReply({ content: `❌ ${err.message}` });
         }
     },
 
@@ -49,113 +198,51 @@ module.exports = {
         const username = message.author.tag;
 
         if (!detailsText || detailsText.trim() === '') {
-            await message.reply('Please provide player names and game name (format: "Player1, Player2 + Game Name")');
+            await message.reply('Format: `!reserve Player1, Player2 + Game Name`');
             return;
         }
 
         try {
-            const result = await this.processReservation(userId, username, detailsText);
-            await message.reply(result);
-        } catch (error) {
-            console.error('Error in reserve DM command:', error);
-            await message.reply('An error occurred while processing your reservation. Please try again.');
-        }
-    },
-
-    async processReservationWithUsers(userId, username, users, gameName, guild) {
-        if (!users || users.length === 0) return 'Please provide at least one player.';
-        if (!gameName || gameName.trim() === '') return 'Please provide a game name.';
-
-        const existingReservation = tableManager.getUserReservation(userId);
-        if (existingReservation) {
-            return `You already have a reservation at Table ${existingReservation.tableNumber}. Please cancel it first if you want to make a new reservation.`;
-        }
-
-        if (tableManager.getAvailableTableCount() === 0) {
-            return 'Sorry, all tables are currently reserved. Please try again later.';
-        }
-
-        const playerNamesArray = await Promise.all(users.map(async user => {
-            try {
-                const member = await guild.members.fetch(user.id);
-                return member.displayName || user.username;
-            } catch {
-                return user.username;
+            let playerNames, gameName;
+            if (detailsText.includes('+')) {
+                const parts = detailsText.split('+');
+                playerNames = parts[0].trim();
+                gameName = parts[1].trim();
+            } else {
+                playerNames = detailsText.trim();
+                gameName = 'Unspecified Game';
             }
-        }));
 
-        const playerNames = playerNamesArray.join(', ');
-        const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName.trim());
-
-        await this.sendPaymentReminder(users, tableNumber, playerNames, gameName.trim());
-
-        return `Table ${tableNumber} has been reserved for ${playerNames} playing ${gameName}. Have a great game!`;
+            const targetDate = getUpcomingThursdays(1)[0].value;
+            const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName, targetDate);
+            await this.sendPaymentReminder([userId], tableNumber, playerNames, gameName, targetDate);
+            await message.reply(`Table ${tableNumber} reserved for ${playerNames} playing ${gameName} on ${targetDate}.`);
+        } catch (error) {
+            await message.reply(`Error: ${error.message}`);
+        }
     },
 
-    async processReservation(userId, username, details) {
-        let playerNames, gameName;
-
-        if (details.includes('+')) {
-            const parts = details.split('+');
-            playerNames = parts[0].trim();
-            gameName = parts[1].trim();
-        } else if (details.includes('|')) {
-            const parts = details.split('|');
-            playerNames = parts[0].trim();
-            gameName = parts[1].trim();
-        } else {
-            playerNames = details.trim();
-            gameName = 'Unspecified Game';
-        }
-
-        if (!playerNames) return 'Please provide at least one player name.';
-
-        const existingReservation = tableManager.getUserReservation(userId);
-        if (existingReservation) {
-            return `You already have a reservation at Table ${existingReservation.tableNumber}. Please cancel it first if you want to make a new reservation.`;
-        }
-
-        if (tableManager.getAvailableTableCount() === 0) {
-            return 'Sorry, all tables are currently reserved. Please try again later.';
-        }
-
-        const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName);
-
-        await this.sendPaymentReminder([{ id: userId }], tableNumber, playerNames, gameName);
-
-        return `Table ${tableNumber} has been reserved for ${playerNames} playing ${gameName}. Have a great game!`;
-    },
-
-    async sendPaymentReminder(users, tableNumber, playerNames, gameName) {
+    async sendPaymentReminder(userIds, tableNumber, playerNames, gameName, date) {
         try {
             const { client } = require('../index');
-
             const reminderMessage = `
 **Payment Reminder for Table ${tableNumber}**
+Session Date: **Thursday, ${date}**
+Reservation: ${playerNames} — Game: ${gameName}
 
-Thank you for reserving Table ${tableNumber} for ${playerNames} playing ${gameName}.
-
-Please pay your table fee **before playing**. This helps support the club.
-
+Please pay your table fee before playing.
 💳 **Bank Transfer Details**
-• **Account Name:** ${process.env.BANK_ACCOUNT_NAME}
-• **Sort Code:** ${process.env.BANK_SORT_CODE}
-• **Account Number:** ${process.env.BANK_ACCOUNT_NUMBER}
+- **Account Name:** ${process.env.BANK_ACCOUNT_NAME || 'Inverurie Gaming Club'}
+- **Sort Code:** ${process.env.BANK_SORT_CODE || '12-34-56'}
+- **Account Number:** ${process.env.BANK_ACCOUNT_NUMBER || '12345678'}
 
-Please add your name and date of the session to the payment reference. For example: "D Smith 12/10/25"
-
-Have a great game!
+Reference: "Table ${tableNumber} ${date}"
             `;
-
-            for (const user of users) {
+            for (const id of userIds) {
                 try {
-                    const fetchedUser = await client.users.fetch(user.id);
-                    if (fetchedUser) {
-                        await fetchedUser.send(reminderMessage);
-                    }
-                } catch (err) {
-                    console.error(`Could not send DM to user ${user.id}:`, err.message);
-                }
+                    const user = await client.users.fetch(id);
+                    if (user) await user.send(reminderMessage);
+                } catch {}
             }
         } catch (error) {
             console.error('Error sending payment reminders:', error);
