@@ -1,26 +1,16 @@
 const { SlashCommandBuilder } = require('discord.js');
-const {
-  getEvents,
-  getEventByName,
-  getBookingByUserAndEvent,
-  removeBookingByUserAndEvent,
-} = require('../utils/eventStorage');
+const { getEvents, getEventByName, getBookingByUserAndEvent, removeBookingByUserAndEvent } = require('../utils/eventStorage');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('canceleventbooking')
     .setDescription('Cancel your booking for a specific event')
     .addStringOption(option =>
-      option.setName('eventname')
-        .setDescription('The name of the event')
-        .setRequired(true)
-        .setAutocomplete(true)
-    ),
+      option.setName('eventname').setDescription('The name of the event').setRequired(true).setAutocomplete(true)),
 
   async autocomplete(interaction) {
     const focusedValue = (interaction.options.getFocused() || '').toLowerCase();
     const events = getEvents();
-
     const filtered = (focusedValue
       ? events.filter(e => e.name.toLowerCase().includes(focusedValue))
       : events
@@ -49,7 +39,7 @@ module.exports = {
 
     const removed = removeBookingByUserAndEvent(userId, eventName);
     if (!removed) {
-      await interaction.reply({ content: `Failed to cancel your booking for "${eventName}". Please try again.`, ephemeral: true });
+      await interaction.reply({ content: `Failed to cancel your booking. Please try again.`, ephemeral: true });
       return;
     }
 
