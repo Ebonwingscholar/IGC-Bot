@@ -21,14 +21,17 @@ if (fs.existsSync(commandsPath)) {
     for (const file of commandFiles) {
         const filePath = path.join(commandsPath, file);
         const command = require(filePath);
-        if ('data' in command && 'execute' in command) {
+        // Ensure command has 'data' property (relaxed check so reserve.js loads properly)
+        if (command && command.data && command.data.name) {
             client.commands.set(command.data.name, command);
         }
     }
 }
 
-client.once('ready', () => {
+// Updated to clientReady for Discord.js v15 compatibility
+client.once('clientReady', () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
+    console.log(`Loaded commands: ${Array.from(client.commands.keys()).join(', ')}`);
 });
 
 // Central interaction router
@@ -37,7 +40,7 @@ client.on('interactionCreate', async interaction => {
         // 1. Handle Slash Commands
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName);
-            if (command) {
+            if (command && typeof command.execute === 'function') {
                 await command.execute(interaction);
             }
         }
@@ -46,7 +49,7 @@ client.on('interactionCreate', async interaction => {
         else if (interaction.isStringSelectMenu()) {
             if (interaction.customId === 'select_reserve_date') {
                 const reserveCommand = client.commands.get('reserve');
-                if (reserveCommand && reserveCommand.handleSelectMenu) {
+                if (reserveCommand && typeof reserveCommand.handleSelectMenu === 'function') {
                     await reserveCommand.handleSelectMenu(interaction);
                 }
             }
@@ -56,7 +59,7 @@ client.on('interactionCreate', async interaction => {
         else if (interaction.isModalSubmit()) {
             if (interaction.customId.startsWith('reserve_modal_')) {
                 const reserveCommand = client.commands.get('reserve');
-                if (reserveCommand && reserveCommand.handleModalSubmit) {
+                if (reserveCommand && typeof reserveCommand.handleModalSubmit === 'function') {
                     await reserveCommand.handleModalSubmit(interaction);
                 }
             }
@@ -74,11 +77,11 @@ client.on('interactionCreate', async interaction => {
 
 // Handle direct message fallback (!reserve)
 client.on('messageCreate', async message => {
-    if (message.author.bot || !message.guild) return;
+    if (message.author.bot) return;
 
     if (message.content.startsWith('!reserve')) {
         const reserveCommand = client.commands.get('reserve');
-        if (reserveCommand && reserveCommand.handleDM) {
+        if (reserveCommand && typeof reserveCommand.handleDM === 'function') {
             const detailsText = message.content.slice(8).trim();
             await reserveCommand.handleDM(message, detailsText);
         }
