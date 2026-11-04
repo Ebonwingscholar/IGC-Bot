@@ -15,79 +15,11 @@ require('dotenv').config();
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('reserve')
-        .setDescription('Reserve a table for your game')
-        .addStringOption(option => option.setName('date').setDescription('Date (YYYY-MM-DD)').setRequired(false))
-        .addStringOption(option => option.setName('session').setDescription('Session slot').setRequired(false))
-        .addUserOption(option => option.setName('player1').setDescription('First player').setRequired(false))
-        .addStringOption(option => option.setName('game').setDescription('Game name').setRequired(false))
-        .addUserOption(option => option.setName('player2').setDescription('Second player').setRequired(false))
-        .addUserOption(option => option.setName('player3').setDescription('Third player').setRequired(false)),
+        .setDescription('Reserve a table for your game'),
 
     async execute(interaction) {
-        const player1 = interaction.options.getUser('player1');
-        const game = interaction.options.getString('game');
-
-        if (!player1 && !game) {
-            const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle('🎲 Inverurie Gaming Club - Table Reservation')
-                .setDescription('Click the button below to open the quick booking form, select your session date, and reserve a table!');
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('open_reserve_modal')
-                    .setLabel('📅 Reserve a Table')
-                    .setStyle(ButtonStyle.Primary)
-            );
-
-            await interaction.reply({ embeds: [embed], components: [row] });
-            return;
-        }
-
-        const userId = interaction.user.id;
-        const username = interaction.user.tag;
-        const date = interaction.options.getString('date') || new Date().toISOString().split('T')[0];
-        const session = interaction.options.getString('session') || 'Evening 18:00-22:00';
-
-        if (!isValidDate(date)) {
-            await interaction.reply({ content: '❌ Please provide a valid calendar date in YYYY-MM-DD format.', ephemeral: true });
-            return;
-        }
-
-        const today = new Date().toISOString().split('T')[0];
-        if (date < today) {
-            await interaction.reply({ content: '❌ You cannot book a table for a date in the past.', ephemeral: true });
-            return;
-        }
-
-        const players = [player1 || interaction.user];
-        for (let i = 2; i <= 3; i++) {
-            const user = interaction.options.getUser(`player${i}`);
-            if (user) players.push(user);
-        }
-
-        const gameName = game || 'Unspecified Game';
-
-        try {
-            const playerNamesArray = await Promise.all(players.map(async u => {
-                try {
-                    if (interaction.guild) {
-                        const m = await interaction.guild.members.fetch(u.id);
-                        return m.displayName || u.username;
-                    }
-                } catch {}
-                return u.username;
-            }));
-
-            const playerNames = playerNamesArray.join(', ');
-            const tableNumber = tableManager.addReservation(userId, username, playerNames, gameName, date, session);
-            await this.sendPaymentReminder([interaction.user], tableNumber, playerNames, gameName, date);
-            
-            await interaction.reply(`✅ Table ${tableNumber} has been reserved for **${playerNames}** playing **${gameName}** on **${date}** (${session}).`);
-        } catch (error) {
-            console.error('Error executing reserve:', error);
-            await interaction.reply({ content: `❌ ${error.message || 'An error occurred.'}`, ephemeral: true });
-        }
+        // Automatically open the modal form when /reserve is executed
+        return await this.showModal(interaction);
     },
 
     async showModal(interaction) {
@@ -210,9 +142,9 @@ Reservation: ${playerNames} — Game: ${gameName}
 
 Please pay your table fee before playing.
 💳 **Bank Transfer Details**
-• **Account Name:** ${process.env.BANK_ACCOUNT_NAME || 'Inverurie Gaming Club'}
-• **Sort Code:** ${process.env.BANK_SORT_CODE || '12-34-56'}
-• **Account Number:** ${process.env.BANK_ACCOUNT_NUMBER || '12345678'}
+- **Account Name:** ${process.env.BANK_ACCOUNT_NAME || 'Inverurie Gaming Club'}
+- **Sort Code:** ${process.env.BANK_SORT_CODE || '12-34-56'}
+- **Account Number:** ${process.env.BANK_ACCOUNT_NUMBER || '12345678'}
 
 Reference: "D Smith ${date}"
             `;
