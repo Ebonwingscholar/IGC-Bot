@@ -21,14 +21,12 @@ if (fs.existsSync(commandsPath)) {
     for (const file of commandFiles) {
         const filePath = path.join(commandsPath, file);
         const command = require(filePath);
-        // Ensure command has 'data' property (relaxed check so reserve.js loads properly)
         if (command && command.data && command.data.name) {
             client.commands.set(command.data.name, command);
         }
     }
 }
 
-// Updated to clientReady for Discord.js v15 compatibility
 client.once('clientReady', () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     console.log(`Loaded commands: ${Array.from(client.commands.keys()).join(', ')}`);
@@ -45,7 +43,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
         
-        // 2. Handle Select Menu (Thursday Session Dropdown)
+        // 2. Handle String Select Menu (Thursday Date Dropdown)
         else if (interaction.isStringSelectMenu()) {
             if (interaction.customId === 'select_reserve_date') {
                 const reserveCommand = client.commands.get('reserve');
@@ -55,9 +53,19 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // 3. Handle Modal Submissions
+        // 3. Handle User Select Menu (Tagging Club Members)
+        else if (interaction.isUserSelectMenu()) {
+            if (interaction.customId === 'select_reserve_players') {
+                const reserveCommand = client.commands.get('reserve');
+                if (reserveCommand && typeof reserveCommand.handleUserSelect === 'function') {
+                    await reserveCommand.handleUserSelect(interaction);
+                }
+            }
+        }
+
+        // 4. Handle Modal Submissions
         else if (interaction.isModalSubmit()) {
-            if (interaction.customId.startsWith('reserve_modal_')) {
+            if (interaction.customId === 'reserve_final_modal') {
                 const reserveCommand = client.commands.get('reserve');
                 if (reserveCommand && typeof reserveCommand.handleModalSubmit === 'function') {
                     await reserveCommand.handleModalSubmit(interaction);
