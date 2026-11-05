@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+.const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const eventManager = require('../utils/eventManager');
 
 module.exports = {
@@ -58,4 +58,28 @@ module.exports = {
             } else {
                 if (t.am) {
                     const pList = t.am.players.map(p => p.name).join(', ');
-                    scheduleText
+                    scheduleText += `• 🌅 **AM (09:00-13:00):** ${t.am.gameName}\n  Players (${t.am.players.length}/${t.am.maxPlayers}): ${pList}\n`;
+                } else {
+                    scheduleText += `• 🌅 **AM:** *AVAILABLE*\n`;
+                }
+
+                if (t.pm) {
+                    const pList = t.pm.players.map(p => p.name).join(', ');
+                    scheduleText += `• 🌇 **PM (13:30-17:30):** ${t.pm.gameName}\n  Players (${t.pm.players.length}/${t.pm.maxPlayers}): ${pList}\n`;
+                } else {
+                    scheduleText += `• 🌇 **PM:** *AVAILABLE*\n`;
+                }
+            }
+            scheduleText += `--------------------------------------------------\n`;
+        }
+
+        if (activeCount === 0) {
+            scheduleText = `📅 **Event Table Schedule — ${eventTitle} (${dateStr})**\n\nNo tables have been booked for this event yet! Be the first to start a table using \`/bookevent\`.`;
+        }
+
+        await interaction.update({
+            content: scheduleText,
+            components: []
+        });
+    }
+};
