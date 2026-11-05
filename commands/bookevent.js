@@ -182,7 +182,7 @@ module.exports = {
                 Math.min(maxPlayers, 8)
             );
 
-            await this.sendPaymentReminder(interaction.user.id, tableNumber, gameName, flow.date, flow.slot);
+            await this.sendPaymentReminder(interaction, tableNumber, gameName, flow.date, flow.slot);
 
             activeEventFlows.delete(interaction.user.id);
 
@@ -194,10 +194,9 @@ module.exports = {
         }
     },
 
-    async sendPaymentReminder(userId, tableNumber, gameName, date, slot) {
+    async sendPaymentReminder(interaction, tableNumber, gameName, date, slot) {
         try {
-            const { client } = require('../index');
-            const user = await client.users.fetch(userId);
+            const user = interaction.user;
             if (user) {
                 await user.send(`
 **Payment Reminder for Event Table ${tableNumber}**
