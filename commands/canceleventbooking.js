@@ -1,116 +1,142 @@
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+const eventManager = require('../utils/eventManager');
 
-const filePath = path.join(__dirname, '../data/event-bookings.json');
-
-function getEventBookings() {
-    if (!fs.existsSync(filePath)) return {};
-    try {
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    } catch {
-        return {};
-    }
-}
-
-function saveEventBookings(data) {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-}
+// Active flows for user cancellation state
+const activeCancelFlows = new Map();
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('canceleventbooking')
-        .setDescription('Cancel your table booking or registration for an upcoming club event'),
+        .setDescription('Cancel your table booking or player spot for an upcoming event'),
 
     async execute(interaction) {
-        const userId = interaction.user.id;
-        const data = getEventBookings();
+        const events = eventManager.getUpcomingEvents();
 
-        // Scan all dates and tables to find bookings belonging to this user
-        const userBookings = [];
-        for (const [dateStr, eventObj] of Object.entries(data)) {
-            if (!eventObj.tables) continue;
-            for (const [tableNum, tableObj] of Object.entries(eventObj.tables)) {
-                ['am', 'pm'].forEach(slotKey => {
-                    const slotData = tableObj[slotKey];
-                    if (slotData && slotData.players.some(p => p.id === userId)) {
-                        userBookings.push({
-                            date: dateStr,
-                            tableNumber: tableNum,
-                            slot: slotKey.toUpperCase(),
-                            gameName: slotData.gameName,
-                            isOrganizer: slotData.organizerId === userId
-                        });
-                    }
-                });
-            }
-        }
-
-        if (userBookings.length === 0) {
-            return interaction.reply({ 
-                content: '❌ You do not have any active event table bookings or registrations to cancel.', 
-                ephemeral: true 
+        if (events.length === 0) {
+            return interaction.reply({
+                content: '❌ There are currently no upcoming events scheduled.',
+                ephemeral: true
             });
         }
 
-        // Build a select menu showing all their active event slots
-        const options = userBookings.map((b) => {
-            const roleDesc = b.isOrganizer ? '(Host)' : '(Player)';
-            return new StringSelectMenuOptionBuilder()
-                .setLabel(`${b.date} - Table ${b.tableNumber} (${b.slot})`)
-                .setDescription(`${b.gameName} ${roleDesc}`)
-                .setValue(`${b.date}_${b.tableNumber}_${b.slot}`);
-        });
-
         const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('cancel_event_selection')
-            .setPlaceholder('Select the booking you wish to cancel...')
-            .addOptions(options);
+            .setCustomId('cancelevent_select_date')
+            .setPlaceholder('📅 Select an event date...')
+            .addOptions(
+                events.map(e => new StringSelectMenuOptionBuilder()
+                    .setLabel(e.label)
+                    .setValue(e.value)
+                )
+            );
 
         await interaction.reply({
-            content: '🗑️ **Cancel Event Booking**\nSelect the specific table session you want to leave or cancel:',
+            content: '❌ **Cancel Event Booking**\nStep 1 of 2: Select the event date you want to cancel a booking for:',
             components: [new ActionRowBuilder().addComponents(selectMenu)],
             ephemeral: true
         });
     },
 
     async handleSelectMenu(interaction) {
-        if (interaction.customId !== 'cancel_event_selection') return;
+        // Prevent 3-second timeout immediately
+        await interaction.deferUpdate();
 
-        const [dateStr, tableNum, slotKeyUpper] = interaction.values[0].split('_');
-        const slotKey = slotKeyUpper.toLowerCase();
-        const userId = interaction.user.id;
+        // Step 1: Date Selected -> Find user's active bookings on that date
+        if (interaction.customId === 'cancelevent_select_date') {
+            const dateStr = interaction.values[0];
+            const eventData = eventManager.getEventData(dateStr);
+            const userBookings = [];
 
-        const data = getEventBookings();
-        if (!data[dateStr] || !data[dateStr].tables || !data[dateStr].tables[tableNum]) {
-            return interaction.update({ content: '❌ Booking not found or already cancelled.', components: [] });
-        }
-
-        const tableObj = data[dateStr].tables[tableNum];
-        const slotData = tableObj[slotKey];
-
-        if (!slotData) {
-            return interaction.update({ content: '❌ This table slot is no longer active.', components: [] });
-        }
-
-        // Remove user from the players list
-        slotData.players = slotData.players.filter(p => p.id !== userId);
-
-        // If the user was the host (organizer) OR if no players are left, clear the slot
-        if (slotData.organizerId === userId || slotData.players.length === 0) {
-            tableObj[slotKey] = null;
-            // If it was a Whole Day booking covering both AM and PM, clear the other slot too if tied to them
-            const otherSlotKey = slotKey === 'am' ? 'pm' : 'am';
-            if (tableObj[otherSlotKey] && tableObj[otherSlotKey].organizerId === userId) {
-                tableObj[otherSlotKey] = null;
+            // Check tables where user is host or player
+            for (let i = 1; i <= eventManager.MAX_TABLES; i++) {
+                const t = eventData.tables[i];
+                ['am', 'pm'].forEach(slot => {
+                    if (t[slot] && t[slot].players.some(p => p.id === interaction.user.id)) {
+                        const isOrganizer = t[slot].organizerId === interaction.user.id;
+                        userBookings.push({
+                            label: `Table ${i} (${slot.toUpperCase()}) — ${t[slot].gameName}`,
+                            description: isOrganizer ? 'Role: Organizer (Cancels table)' : 'Role: Player (Leaves table)',
+                            value: `${i}_${slot}`
+                        });
+                    }
+                });
             }
+
+            if (userBookings.length === 0) {
+                return interaction.editReply({
+                    content: `❌ You do not have any active table bookings or registrations for **${dateStr}**.`,
+                    components: []
+                });
+            }
+
+            activeCancelFlows.set(interaction.user.id, { dateStr });
+
+            const bookingMenu = new StringSelectMenuBuilder()
+                .setCustomId('cancelevent_select_booking')
+                .setPlaceholder('Select booking to cancel or leave...')
+                .addOptions(
+                    userBookings.map(b => new StringSelectMenuOptionBuilder()
+                        .setLabel(b.label)
+                        .setDescription(b.description)
+                        .setValue(b.value)
+                    )
+                );
+
+            await interaction.editReply({
+                content: `📅 Event Date: **${dateStr}**\n\nStep 2 of 2: Select the booking you wish to cancel or leave:`,
+                components: [new ActionRowBuilder().addComponents(bookingMenu)]
+            });
         }
+        // Step 2: Booking Selected -> Process Cancellation or Departure
+        else if (interaction.customId === 'cancelevent_select_booking') {
+            const flow = activeCancelFlows.get(interaction.user.id);
+            if (!flow) {
+                return interaction.editReply({ content: '❌ Cancellation session expired. Please run `/canceleventbooking` again.', components: [] });
+            }
 
-        saveEventBookings(data);
+            const [tableNumStr, slot] = interaction.values[0].split('_');
+            const tableNum = parseInt(tableNumStr);
+            const data = eventManager.getEventData(flow.dateStr);
+            const slotData = data.tables[tableNum][slot];
 
-        await interaction.update({
-            content: `✅ Successfully cancelled your booking for **Table ${tableNum} (${slotKeyUpper})** on **${dateStr}**!`,
-            components: []
-        });
+            if (!slotData) {
+                activeCancelFlows.delete(interaction.user.id);
+                return interaction.editReply({ content: '❌ Booking not found or already cancelled.', components: [] });
+            }
+
+            let resultMsg = '';
+
+            // If user is organizer, clear the slot (and remove from whole day if applicable)
+            if (slotData.organizerId === interaction.user.id) {
+                if (data.tables[tableNum].am && data.tables[tableNum].pm &&
+                    data.tables[tableNum].am.organizerId === interaction.user.id &&
+                    data.tables[tableNum].pm.organizerId === interaction.user.id) {
+                    data.tables[tableNum].am = null;
+                    data.tables[tableNum].pm = null;
+                    resultMsg = `✅ Cancelled your Whole Day table booking on **Table ${tableNum}** for **${flow.dateStr}**.`;
+                } else {
+                    data.tables[tableNum][slot] = null;
+                    resultMsg = `✅ Cancelled your **${slot.toUpperCase()}** table booking on **Table ${tableNum}** for **${flow.dateStr}**.`;
+                }
+            } else {
+                // User is a player joining, remove them from roster
+                slotData.players = slotData.players.filter(p => p.id !== interaction.user.id);
+                resultMsg = `✅ You have left **Table ${tableNum}** (${slotData.gameName}) for **${flow.dateStr}**.`;
+            }
+
+            // Save updated JSON state
+            const fs = require('fs');
+            const path = require('path');
+            const filePath = path.join(__dirname, '../data/event-bookings.json');
+            const fullData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+            fullData[flow.dateStr] = data;
+            fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2));
+
+            activeCancelFlows.delete(interaction.user.id);
+
+            await interaction.editReply({
+                content: resultMsg,
+                components: []
+            });
+        }
     }
 };
