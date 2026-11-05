@@ -55,6 +55,16 @@ client.on('interactionCreate', async interaction => {
                 if (bookEventCommand && typeof bookEventCommand.handleSelectMenu === 'function') {
                     await bookEventCommand.handleSelectMenu(interaction);
                 }
+            } else if (interaction.customId.startsWith('cancelevent_')) {
+                const cancelCommand = client.commands.get('canceleventbooking');
+                if (cancelCommand && typeof cancelCommand.handleSelectMenu === 'function') {
+                    await cancelCommand.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('view_')) {
+                const viewCommand = client.commands.get('viewevents');
+                if (viewCommand && typeof viewCommand.handleSelectMenu === 'function') {
+                    await viewCommand.handleSelectMenu(interaction);
+                }
             }
         }
 
