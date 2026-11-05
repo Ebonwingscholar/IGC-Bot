@@ -46,7 +46,35 @@ module.exports = {
     },
 
     async handleSelectMenu(interaction) {
-        // Prevent Discord "interaction failed" timeout by acknowledging immediately
+        // Step 3 (Start): Must show modal immediately without deferring
+        if (interaction.customId === 'event_select_action' && interaction.values[0] === 'start') {
+            const modal = new ModalBuilder()
+                .setCustomId('event_start_modal')
+                .setTitle('Host Event Table');
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId('modal_game')
+                        .setLabel('Game System / Scenario')
+                        .setPlaceholder('e.g. BattleTech 3025, Warhammer 40k, Board Games')
+                        .setRequired(true)
+                        .setStyle(TextInputStyle.Short)
+                ),
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId('modal_max_players')
+                        .setLabel('Max Players Allowed (up to 8)')
+                        .setValue('8')
+                        .setRequired(true)
+                        .setStyle(TextInputStyle.Short)
+                )
+            );
+
+            return interaction.showModal(modal);
+        }
+
+        // For all other menu steps, safe to defer update to prevent timeout
         await interaction.deferUpdate();
 
         if (interaction.customId === 'event_select_date') {
@@ -90,32 +118,7 @@ module.exports = {
             const action = interaction.values[0];
             const flow = activeEventFlows.get(interaction.user.id) || {};
 
-            if (action === 'start') {
-                const modal = new ModalBuilder()
-                    .setCustomId('event_start_modal')
-                    .setTitle('Host Event Table');
-
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('modal_game')
-                            .setLabel('Game System / Scenario')
-                            .setPlaceholder('e.g. BattleTech 3025, Warhammer 40k, Board Games')
-                            .setRequired(true)
-                            .setStyle(TextInputStyle.Short)
-                    ),
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('modal_max_players')
-                            .setLabel('Max Players Allowed (up to 8)')
-                            .setValue('8')
-                            .setRequired(true)
-                            .setStyle(TextInputStyle.Short)
-                    )
-                );
-
-                return interaction.showModal(modal);
-            } else {
+            if (action === 'join') {
                 const joinable = eventManager.getJoinableTables(flow.date, flow.slot);
                 if (joinable.length === 0) {
                     return interaction.editReply({
