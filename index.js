@@ -43,12 +43,17 @@ client.on('interactionCreate', async interaction => {
             }
         }
         
-        // 2. Handle String Select Menu (Thursday Date Dropdown)
+        // 2. Handle String Select Menus
         else if (interaction.isStringSelectMenu()) {
             if (interaction.customId === 'select_reserve_date') {
                 const reserveCommand = client.commands.get('reserve');
                 if (reserveCommand && typeof reserveCommand.handleSelectMenu === 'function') {
                     await reserveCommand.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('event_')) {
+                const bookEventCommand = client.commands.get('bookevent');
+                if (bookEventCommand && typeof bookEventCommand.handleSelectMenu === 'function') {
+                    await bookEventCommand.handleSelectMenu(interaction);
                 }
             }
         }
@@ -69,6 +74,11 @@ client.on('interactionCreate', async interaction => {
                 const reserveCommand = client.commands.get('reserve');
                 if (reserveCommand && typeof reserveCommand.handleModalSubmit === 'function') {
                     await reserveCommand.handleModalSubmit(interaction);
+                }
+            } else if (interaction.customId === 'event_start_modal') {
+                const bookEventCommand = client.commands.get('bookevent');
+                if (bookEventCommand && typeof bookEventCommand.handleModalSubmit === 'function') {
+                    await bookEventCommand.handleModalSubmit(interaction);
                 }
             }
         }
