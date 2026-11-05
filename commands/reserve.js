@@ -8,6 +8,8 @@ const {
     TextInputBuilder, 
     TextInputStyle 
 } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 const tableManager = require('../utils/tableManager');
 require('dotenv').config();
 
@@ -15,11 +17,27 @@ require('dotenv').config();
 const activeReservations = new Map();
 
 /**
- * Calculates upcoming fortnightly (every 2nd week) Thursday club dates cleanly without loops.
+ * Reads closed dates from data/closed-dates.json
+ */
+function getClosedDates() {
+    try {
+        const filePath = path.join(__dirname, '../data/closed-dates.json');
+        if (fs.existsSync(filePath)) {
+            return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        }
+    } catch (err) {
+        console.error('Error reading closed-dates.json:', err);
+    }
+    return [];
+}
+
+/**
+ * Calculates upcoming fortnightly (every 2nd week) Thursday club dates, skipping any closed dates.
  * Anchor: Thursday, 5 November 2026.
  */
 function getUpcomingThursdays(count = 4) {
     const thursdays = [];
+    const closedDates = getClosedDates();
     
     // Fixed anchor: Thursday, Nov 5, 2026 00:00:00 UTC
     const anchorTime = Date.UTC(2026, 10, 5); 
@@ -39,23 +57,29 @@ function getUpcomingThursdays(count = 4) {
         nextSessionTime += msPerFortnight;
     }
 
-    for (let i = 0; i < count; i++) {
-        const sessionDate = new Date(nextSessionTime + (i * msPerFortnight));
+    // Keep advancing fortnightly intervals until we collect 'count' open dates
+    while (thursdays.length < count) {
+        const sessionDate = new Date(nextSessionTime);
         
         const year = sessionDate.getUTCFullYear();
         const month = String(sessionDate.getUTCMonth() + 1).padStart(2, '0');
         const day = String(sessionDate.getUTCDate()).padStart(2, '0');
         const dateStr = `${year}-${month}-${day}`;
 
-        const label = sessionDate.toLocaleDateString('en-GB', { 
-            weekday: 'long', 
-            day: 'numeric', 
-            month: 'short', 
-            year: 'numeric',
-            timeZone: 'UTC'
-        });
+        // Skip if this date is listed in closed-dates.json
+        if (!closedDates.includes(dateStr)) {
+            const label = sessionDate.toLocaleDateString('en-GB', { 
+                weekday: 'long', 
+                day: 'numeric', 
+                month: 'short', 
+                year: 'numeric',
+                timeZone: 'UTC'
+            });
 
-        thursdays.push({ label, value: dateStr });
+            thursdays.push({ label, value: dateStr });
+        }
+
+        nextSessionTime += msPerFortnight;
     }
 
     return thursdays;
