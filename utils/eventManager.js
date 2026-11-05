@@ -28,6 +28,27 @@ const MAX_TABLES = 12; // Total physical club tables
 module.exports = {
     MAX_TABLES,
 
+    // Get list of upcoming events created by admins
+    getUpcomingEvents() {
+        const data = getData();
+        const today = new Date().toISOString().split('T')[0];
+        const upcoming = [];
+
+        for (const [dateStr, eventObj] of Object.entries(data)) {
+            if (dateStr >= today && eventObj.eventName) {
+                upcoming.push({
+                    value: dateStr,
+                    label: `${eventObj.eventName} (${dateStr})`,
+                    eventName: eventObj.eventName
+                });
+            }
+        }
+
+        // Sort chronologically
+        upcoming.sort((a, b) => a.value.localeCompare(b.value));
+        return upcoming;
+    },
+
     getEventData(dateStr) {
         const data = getData();
         if (!data[dateStr]) {
@@ -86,46 +107,3 @@ module.exports = {
         const event = this.getEventData(dateStr);
         const tableNum = this.findAvailableTable(dateStr, slot);
 
-        if (!tableNum) throw new Error(`Sorry, all tables are fully booked for ${slot} on this date!`);
-
-        const slotData = {
-            organizerId: userId,
-            organizerName: userName,
-            gameName: gameName,
-            maxPlayers: parseInt(maxPlayers) || 8,
-            players: [{ id: userId, name: userName }]
-        };
-
-        if (slot === 'Whole Day') {
-            event.tables[tableNum].am = slotData;
-            event.tables[tableNum].pm = slotData;
-        } else {
-            event.tables[tableNum][slot.toLowerCase()] = slotData;
-        }
-
-        saveData({ ...getData(), [dateStr]: event });
-        return tableNum;
-    },
-
-    // Join an existing game table
-    joinBooking(dateStr, tableNumber, slot, userId, userName) {
-        const event = this.getEventData(dateStr);
-        const t = event.tables[tableNumber];
-        const slotKey = slot === 'Whole Day' ? (t.am ? 'am' : 'pm') : slot.toLowerCase();
-        const slotData = t[slotKey];
-
-        if (!slotData) throw new Error('This table slot is no longer active.');
-        if (slotData.players.some(p => p.id === userId)) throw new Error('You are already registered on this table.');
-        if (slotData.players.length >= slotData.maxPlayers) throw new Error('This table is already at maximum capacity (8 players).');
-
-        slotData.players.push({ id: userId, name: userName });
-
-        if (slot === 'Whole Day') {
-            t.am = slotData;
-            t.pm = slotData;
-        }
-
-        saveData({ ...getData(), [dateStr]: event });
-        return slotData;
-    }
-};
