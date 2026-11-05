@@ -8,6 +8,8 @@ const {
     TextInputBuilder, 
     TextInputStyle 
 } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 const tableManager = require('../utils/tableManager');
 require('dotenv').config();
 
@@ -15,41 +17,70 @@ require('dotenv').config();
 const activeReservations = new Map();
 
 /**
- * Calculates upcoming fortnightly (every 2nd week) Thursday club dates.
- * Anchor set to Thursday, 5 November 2026.
+ * Reads closed dates from data/closed-dates.json
+ */
+function getClosedDates() {
+    try {
+        const filePath = path.join(__dirname, '../data/closed-dates.json');
+        if (fs.existsSync(filePath)) {
+            return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        }
+    } catch (err) {
+        console.error('Error reading closed-dates.json:', err);
+    }
+    return [];
+}
+
+/**
+ * Calculates upcoming fortnightly (every 2nd week) Thursday club dates cleanly without loops,
+ * skipping any dates registered in data/closed-dates.json.
+ * Anchor: Thursday, 5 November 2026.
  */
 function getUpcomingThursdays(count = 4) {
     const thursdays = [];
-    const now = new Date();
-
-    // Anchor Date: Thursday, 5 November 2026
-    const anchorDate = new Date(2026, 10, 5); 
-    anchorDate.setHours(0, 0, 0, 0);
-
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const msPerFortnight = 14 * msPerDay;
-
-    let currentSession = new Date(anchorDate.getTime());
+    const closedDates = getClosedDates();
     
-    // Cutoff on session day at 22:00
-    const todayCutoff = new Date(now);
-    todayCutoff.setHours(22, 0, 0, 0);
+    // Fixed anchor: Thursday, Nov 5, 2026 00:00:00 UTC
+    const anchorTime = Date.UTC(2026, 10, 5); 
+    const msPerFortnight = 14 * 24 * 60 * 60 * 1000;
 
-    while (currentSession < now && (now.toDateString() !== currentSession.toDateString() || now > todayCutoff)) {
-        currentSession = new Date(currentSession.getTime() + msPerFortnight);
+    const now = new Date();
+    const nowTime = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+
+    let intervals = Math.floor((nowTime - anchorTime) / msPerFortnight);
+    if (intervals < 0) intervals = 0;
+
+    let nextSessionTime = anchorTime + (intervals * msPerFortnight);
+
+    if (nowTime === nextSessionTime && now.getHours() >= 22) {
+        nextSessionTime += msPerFortnight;
+    } else if (nextSessionTime < nowTime) {
+        nextSessionTime += msPerFortnight;
     }
 
-    for (let i = 0; i < count; i++) {
-        const dateStr = currentSession.toISOString().split('T')[0];
-        const label = currentSession.toLocaleDateString('en-GB', { 
-            weekday: 'long', 
-            day: 'numeric', 
-            month: 'short', 
-            year: 'numeric' 
-        });
+    // Keep advancing fortnightly intervals until we collect 'count' open dates
+    while (thursdays.length < count) {
+        const sessionDate = new Date(nextSessionTime);
+        
+        const year = sessionDate.getUTCFullYear();
+        const month = String(sessionDate.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(sessionDate.getUTCDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
 
-        thursdays.push({ label, value: dateStr });
-        currentSession = new Date(currentSession.getTime() + msPerFortnight);
+        // Skip if date is registered in closed-dates.json
+        if (!closedDates.includes(dateStr)) {
+            const label = sessionDate.toLocaleDateString('en-GB', { 
+                weekday: 'long', 
+                day: 'numeric', 
+                month: 'short', 
+                year: 'numeric',
+                timeZone: 'UTC'
+            });
+
+            thursdays.push({ label, value: dateStr });
+        }
+
+        nextSessionTime += msPerFortnight;
     }
 
     return thursdays;
