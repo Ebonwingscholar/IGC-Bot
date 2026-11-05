@@ -45,8 +45,10 @@ module.exports = {
         });
     },
 
-    // Step 1: Date Selected -> Choose Slot (AM, PM, Whole Day)
     async handleSelectMenu(interaction) {
+        // Prevent Discord "interaction failed" timeout by acknowledging immediately
+        await interaction.deferUpdate();
+
         if (interaction.customId === 'event_select_date') {
             const date = interaction.values[0];
             activeEventFlows.set(interaction.user.id, { date });
@@ -60,12 +62,11 @@ module.exports = {
                     { label: 'Whole Day', value: 'Whole Day', description: '09:00 - 17:30 (Both AM & PM)' }
                 ]);
 
-            await interaction.update({
+            await interaction.editReply({
                 content: `📅 Event Date: **${date}**\n\nStep 2 of 3: Select your session time slot:`,
                 components: [new ActionRowBuilder().addComponents(slotMenu)]
             });
         } 
-        // Step 2: Slot Selected -> Choose Action (Start New Table vs Join Existing)
         else if (interaction.customId === 'event_select_slot') {
             const slot = interaction.values[0];
             const flow = activeEventFlows.get(interaction.user.id) || {};
@@ -80,12 +81,11 @@ module.exports = {
                     { label: 'Join an existing game / table', value: 'join', description: 'Join someone else already booked in this slot', emoji: '🟡' }
                 ]);
 
-            await interaction.update({
+            await interaction.editReply({
                 content: `📅 Event Date: **${flow.date}** | ⏱️ Slot: **${slot}**\n\nStep 3 of 3: Do you want to start a new table or join an existing one?`,
                 components: [new ActionRowBuilder().addComponents(actionMenu)]
             });
         }
-        // Step 3: Action Selected -> Show Join Selection or Display Modal
         else if (interaction.customId === 'event_select_action') {
             const action = interaction.values[0];
             const flow = activeEventFlows.get(interaction.user.id) || {};
@@ -114,11 +114,11 @@ module.exports = {
                     )
                 );
 
-                await interaction.showModal(modal);
+                return interaction.showModal(modal);
             } else {
                 const joinable = eventManager.getJoinableTables(flow.date, flow.slot);
                 if (joinable.length === 0) {
-                    return interaction.update({
+                    return interaction.editReply({
                         content: `❌ There are no open tables seeking players for **${flow.slot}** on **${flow.date}**. Try starting a new table instead!`,
                         components: []
                     });
@@ -135,13 +135,12 @@ module.exports = {
                         )
                     );
 
-                await interaction.update({
+                await interaction.editReply({
                     content: `📅 Event Date: **${flow.date}** | ⏱️ Slot: **${flow.slot}**\n\nSelect a table to join:`,
                     components: [new ActionRowBuilder().addComponents(tableMenu)]
                 });
             }
         }
-        // Step 4: Table Chosen to Join -> Process Join
         else if (interaction.customId === 'event_join_table') {
             const tableNumber = parseInt(interaction.values[0]);
             const flow = activeEventFlows.get(interaction.user.id);
@@ -151,17 +150,16 @@ module.exports = {
                 const updatedSlot = eventManager.joinBooking(flow.date, tableNumber, flow.slot, interaction.user.id, nickname);
                 activeEventFlows.delete(interaction.user.id);
 
-                await interaction.update({
+                await interaction.editReply({
                     content: `✅ Successfully joined **Table ${tableNumber}** (${updatedSlot.gameName}) for **${flow.slot}** on **${flow.date}**!`,
                     components: []
                 });
             } catch (err) {
-                await interaction.update({ content: `❌ ${err.message}`, components: [] });
+                await interaction.editReply({ content: `❌ ${err.message}`, components: [] });
             }
         }
     },
 
-    // Step 4 (Start): Modal Submitted -> Create Booking & Send Payment DM
     async handleModalSubmit(interaction) {
         if (interaction.customId !== 'event_start_modal') return;
 
