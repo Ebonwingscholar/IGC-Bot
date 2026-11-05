@@ -7,13 +7,26 @@ const commands = [];
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
+console.log('--- Loading Command Files ---');
+
 for (const file of commandFiles) {
     const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-    if ('data' in command && 'execute' in command) {
-        commands.push(command.data.toJSON());
+    console.log(`Loading: ${file}`);
+    
+    try {
+        const command = require(filePath);
+        if ('data' in command && 'execute' in command) {
+            commands.push(command.data.toJSON());
+        } else {
+            console.warn(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+        }
+    } catch (error) {
+        console.error(`\n❌ CRASH DETECTED IN FILE: ${file}\n`);
+        throw error;
     }
 }
+
+console.log('-----------------------------\n');
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
