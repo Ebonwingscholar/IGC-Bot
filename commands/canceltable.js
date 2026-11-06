@@ -1,4 +1,4 @@
-#const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const tableManager = require('../utils/tableManager');
 const eventManager = require('../utils/eventManager');
 const fs = require('fs');
