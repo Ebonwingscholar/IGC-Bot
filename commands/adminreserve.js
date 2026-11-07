@@ -1,175 +1,238 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { 
+    SlashCommandBuilder, 
+    ActionRowBuilder, 
+    StringSelectMenuBuilder, 
+    StringSelectMenuOptionBuilder,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
+} = require('discord.js');
 const tableManager = require('../utils/tableManager');
 const eventManager = require('../utils/eventManager');
-const { isValidDate } = require('../utils/dateUtils');
+const fs = require('fs');
+const path = require('path');
+
+// Temporary state store for admin reservation wizard
+const activeAdminReserves = new Map();
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('adminreserve')
-        .setDescription('Admin: Reserve a specific table for players (Thursday or Club Event)')
-        .addIntegerOption(option => option.setName('table').setDescription('Table number (1-12)').setRequired(true).setMinValue(1).setMaxValue(12))
-        .addUserOption(option => option.setName('player1').setDescription('First player / Host').setRequired(true))
-        .addStringOption(option => option.setName('game').setDescription('Game name').setRequired(true))
-        .addStringOption(option => option.setName('date').setDescription('Date (YYYY-MM-DD). Defaults to today / upcoming Thursday').setRequired(false))
-        .addStringOption(option => option.setName('session').setDescription('Session slot: AM, PM, Whole Day (Events) or Evening (Thursdays)').setRequired(false))
-        .addUserOption(option => option.setName('player2').setDescription('Second player').setRequired(false)),
+        .setDescription('Admin: Interactively reserve a table on behalf of someone'),
 
     async execute(interaction) {
-        const userId = interaction.user.id;
-        const isAdmin = await tableManager.checkIfUserIsAdmin(userId, interaction);
+        const isAdmin = await tableManager.checkIfUserIsAdmin(interaction.user.id, interaction);
         if (!isAdmin) {
             return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
         }
 
-        const tableNumber = interaction.options.getInteger('table');
-        const gameName = interaction.options.getString('game');
-        const inputDate = interaction.options.getString('date');
-        const sessionInput = interaction.options.getString('session');
+        const typeMenu = new StringSelectMenuBuilder()
+            .setCustomId('adminres_type')
+            .setPlaceholder('📂 Select reservation category...')
+            .addOptions([
+                { label: 'Club Event Date', value: 'event', description: 'Book a table for a custom club event', emoji: '📅' },
+                { label: 'Thursday Club Night', value: 'thursday', description: 'Book a standard Thursday night table', emoji: '🍺' }
+            ]);
 
-        // Determine date logic
-        const date = inputDate || new Date().toISOString().split('T')[0];
+        await interaction.reply({
+            content: '👑 **Admin Table Reservation**\nStep 1 of 4: Choose the category of night:',
+            components: [new ActionRowBuilder().addComponents(typeMenu)],
+            ephemeral: true
+        });
+    },
 
-        if (!isValidDate(date)) {
-            return interaction.reply({ content: '❌ Please provide a valid calendar date in YYYY-MM-DD format.', ephemeral: true });
-        }
+    async handleSelectMenu(interaction) {
+        await interaction.deferUpdate();
 
-        const today = new Date().toISOString().split('T')[0];
-        if (date < today) {
-            return interaction.reply({ content: '❌ You cannot reserve a table for a date in the past.', ephemeral: true });
-        }
+        if (interaction.customId === 'adminres_type') {
+            const type = interaction.values[0];
+            activeAdminReserves.set(interaction.user.id, { type });
 
-        // Gather players
-        const players = [];
-        for (let i = 1; i <= 2; i++) {
-            const user = interaction.options.getUser(`player${i}`);
-            if (user) {
-                try {
-                    const member = await interaction.guild.members.fetch(user.id);
-                    players.push(member);
-                } catch {
-                    players.push(user);
+            if (type === 'event') {
+                const events = eventManager.getUpcomingEvents();
+                if (events.length === 0) {
+                    return interaction.editReply({ content: '❌ There are no upcoming club events scheduled.', components: [] });
                 }
-            }
-        }
 
-        try {
-            const result = await this.processAdminReservation(tableNumber, players, gameName, date, sessionInput);
-            await interaction.reply({ content: result, ephemeral: true });
-        } catch (error) {
-            console.error('Error in adminreserve command:', error);
-            await interaction.reply({ content: '❌ An error occurred while processing the reservation.', ephemeral: true });
-        }
-    },
+                const eventMenu = new StringSelectMenuBuilder()
+                    .setCustomId('adminres_event_date')
+                    .setPlaceholder('📅 Select an event date...')
+                    .addOptions(
+                        events.map(e => new StringSelectMenuOptionBuilder()
+                            .setLabel(e.label)
+                            .setValue(e.value)
+                        )
+                    );
 
-    async handleDM(message, args) {
-        const userId = message.author.id;
-        const isAdmin = await tableManager.checkIfUserIsAdmin(userId);
-        if (!isAdmin) {
-            return message.reply('❌ You do not have permission to use this command.');
-        }
-
-        if (!args || args.trim() === '' || !args.includes('+')) {
-            return message.reply('Usage: `!adminreserve <table_number> <player1, player2> + <game_name>`');
-        }
-
-        try {
-            const parts = args.trim().split(/\s+/);
-            const tableNumber = parseInt(parts[0]);
-            const detailsText = parts.slice(1).join(' ');
-
-            if (isNaN(tableNumber) || tableNumber < 1 || tableNumber > 12) {
-                return message.reply('❌ Please provide a valid table number between 1 and 12.');
-            }
-
-            const detailParts = detailsText.split('+');
-            const playerNames = detailParts[0].trim();
-            const gameName = detailParts[1].trim();
-            const date = new Date().toISOString().split('T')[0];
-            const session = 'Evening 18:00-22:00';
-
-            const result = await this.processAdminReservationDM(tableNumber, playerNames, gameName, date, session);
-            await message.reply(result);
-        } catch (error) {
-            console.error('Error in adminreserve DM:', error);
-            await message.reply('❌ An error occurred while processing the reservation.');
-        }
-    },
-
-    async processAdminReservation(tableNumber, players, gameName, date, sessionInput) {
-        if (!players || players.length === 0) return '❌ Please provide at least one player.';
-        if (!gameName || gameName.trim() === '') return '❌ Please provide a game name.';
-
-        const primaryPlayer = players[0];
-        const primaryId = primaryPlayer.id || primaryPlayer.user?.id;
-        const primaryName = primaryPlayer.displayName || primaryPlayer.user?.username || primaryPlayer.username;
-        const allPlayerNames = players.map(p => p.displayName || p.user?.username || p.username).join(', ');
-
-        // Check if date corresponds to a scheduled manual Event
-        const eventData = eventManager.getEventData(date);
-        const isEventDate = eventData && eventData.eventName;
-
-        if (isEventDate) {
-            const slot = sessionInput ? sessionInput.trim() : 'Whole Day';
-            const eventSlotData = {
-                organizerId: primaryId,
-                organizerName: primaryName,
-                gameName: gameName.trim(),
-                maxPlayers: 8,
-                players: players.map(p => ({
-                    id: p.id || p.user?.id,
-                    name: p.displayName || p.user?.username || p.username
-                }))
-            };
-
-            if (slot === 'Whole Day' || slot === 'Both') {
-                eventData.tables[tableNumber].am = eventSlotData;
-                eventData.tables[tableNumber].pm = eventSlotData;
-            } else if (slot.toUpperCase() === 'AM' || slot.toLowerCase().includes('morning')) {
-                eventData.tables[tableNumber].am = eventSlotData;
+                await interaction.editReply({
+                    content: '👑 **Admin Table Reservation**\nStep 2 of 4: Select the event date:',
+                    components: [new ActionRowBuilder().addComponents(eventMenu)]
+                });
             } else {
-                eventData.tables[tableNumber].pm = eventSlotData;
+                // Generate upcoming Thursdays
+                const options = [];
+                let d = new Date();
+                for (let i = 0; i < 6; i++) {
+                    const day = d.getDay();
+                    const diff = (4 - day + 7) % 7; // 4 = Thursday
+                    d.setDate(d.getDate() + diff);
+                    if (i === 0 && day > 4) d.setDate(d.getDate() + 7);
+                    
+                    const dateStr = d.toISOString().split('T')[0];
+                    options.push(new StringSelectMenuOptionBuilder().setLabel(dateStr).setValue(dateStr));
+                    d.setDate(d.getDate() + 7);
+                }
+
+                const thursdayMenu = new StringSelectMenuBuilder()
+                    .setCustomId('adminres_thursday_date')
+                    .setPlaceholder('📅 Select a Thursday...')
+                    .addOptions(options);
+
+                await interaction.editReply({
+                    content: '👑 **Admin Table Reservation**\nStep 2 of 4: Select Thursday date:',
+                    components: [new ActionRowBuilder().addComponents(thursdayMenu)]
+                });
+            }
+        }
+        else if (interaction.customId === 'adminres_event_date' || interaction.customId === 'adminres_thursday_date') {
+            const date = interaction.values[0];
+            const flow = activeAdminReserves.get(interaction.user.id) || {};
+            flow.date = date;
+            activeAdminReserves.set(interaction.user.id, flow);
+
+            // Table Selection (1 to 12)
+            const tableOptions = [];
+            for (let i = 1; i <= 12; i++) {
+                tableOptions.push(new StringSelectMenuOptionBuilder().setLabel(`Table ${i}`).setValue(`${i}`));
             }
 
-            const fs = require('fs');
-            const path = require('path');
-            const filePath = path.join(__dirname, '../data/event-bookings.json');
-            const fullData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            fullData[date] = eventData;
-            fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2));
+            const tableMenu = new StringSelectMenuBuilder()
+                .setCustomId('adminres_table')
+                .setPlaceholder('📌 Select table number...')
+                .addOptions(tableOptions);
 
-            return `✅ **Admin Override:** Reserved Table ${tableNumber} for **${allPlayerNames}** playing **${gameName}** on Event Date **${date}** (${slot}).`;
-        } else {
-            // Standard Thursday night system
-            const session = sessionInput || 'Evening 18:00-22:00';
-            const assignedTableNumber = tableManager.addReservationToSpecificTable(
-                primaryId,
-                primaryName,
-                allPlayerNames,
-                gameName.trim(),
-                tableNumber,
-                date,
-                session
+            await interaction.editReply({
+                content: `👑 **Admin Table Reservation** (Date: **${date}**)\nStep 3 of 4: Select table number:`,
+                components: [new ActionRowBuilder().addComponents(tableMenu)]
+            });
+        }
+        else if (interaction.customId === 'adminres_table') {
+            const tableNumber = interaction.values[0];
+            const flow = activeAdminReserves.get(interaction.user.id) || {};
+            flow.tableNumber = parseInt(tableNumber);
+            activeAdminReserves.set(interaction.user.id, flow);
+
+            const slotMenu = new StringSelectMenuBuilder()
+                .setCustomId('adminres_slot')
+                .setPlaceholder('⏱️ Select session slot...')
+                .addOptions(
+                    flow.type === 'event' 
+                        ? [
+                            { label: 'Morning (AM)', value: 'AM', description: '09:00 - 13:00' },
+                            { label: 'Afternoon (PM)', value: 'PM', description: '13:30 - 17:30' },
+                            { label: 'Whole Day', value: 'Whole Day', description: '09:00 - 17:30' }
+                          ]
+                        : [
+                            { label: 'Evening (18:00 - 22:00)', value: 'Evening 18:00-22:00' }
+                          ]
+                );
+
+            await interaction.editReply({
+                content: `👑 **Admin Table Reservation** (Table **${tableNumber}** on **${flow.date}**)\nStep 4 of 4: Select time slot:`,
+                components: [new ActionRowBuilder().addComponents(slotMenu)]
+            });
+        }
+        else if (interaction.customId === 'adminres_slot') {
+            const slot = interaction.values[0];
+            const flow = activeAdminReserves.get(interaction.user.id) || {};
+            flow.slot = slot;
+            activeAdminReserves.set(interaction.user.id, flow);
+
+            // Pop modal to get Host / Player name and Game name
+            const modal = new ModalBuilder()
+                .setCustomId('adminres_modal')
+                .setTitle('Admin Table Override Details');
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId('modal_players')
+                        .setLabel('Player / Host Name(s)')
+                        .setPlaceholder('e.g. Ross Silvers, John Doe')
+                        .setRequired(true)
+                        .setStyle(TextInputStyle.Short)
+                ),
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId('modal_game')
+                        .setLabel('Game System / Title')
+                        .setPlaceholder('e.g. BattleTech 3025')
+                        .setRequired(true)
+                        .setStyle(TextInputStyle.Short)
+                )
             );
 
-            if (assignedTableNumber === -1) return `❌ Failed to reserve Table ${tableNumber} for ${date} (${session}).`;
-            return `✅ **Admin Override:** Reserved Table ${tableNumber} for **${allPlayerNames}** playing **${gameName}** on **${date}** (${session}).`;
+            return interaction.showModal(modal);
         }
     },
 
-    async processAdminReservationDM(tableNumber, playerNames, gameName, date, session) {
-        if (!playerNames || !gameName) return '❌ Invalid parameters format.';
+    async handleModalSubmit(interaction) {
+        if (interaction.customId !== 'adminres_modal') return;
 
-        const assignedTableNumber = tableManager.addReservationToSpecificTable(
-            'admin_' + Date.now(),
-            'Admin Booking',
-            playerNames,
-            gameName,
-            tableNumber,
-            date,
-            session
-        );
+        await interaction.deferReply({ ephemeral: true });
 
-        if (assignedTableNumber === -1) return `❌ Failed to reserve Table ${tableNumber} for ${date} (${session}).`;
-        return `✅ **Admin Override:** Reserved Table ${tableNumber} for **${playerNames}** playing **${gameName}** on **${date}** (${session}).`;
+        const flow = activeAdminReserves.get(interaction.user.id);
+        if (!flow) {
+            return interaction.editReply({ content: '❌ Session expired. Please run `/adminreserve` again.' });
+        }
+
+        const playerNames = interaction.fields.getTextInputValue('modal_players').trim();
+        const gameName = interaction.fields.getTextInputValue('modal_game').trim();
+        const adminId = interaction.user.id;
+
+        try {
+            if (flow.type === 'event') {
+                const eventData = eventManager.getEventData(flow.date);
+                const eventSlotData = {
+                    organizerId: adminId,
+                    organizerName: playerNames,
+                    gameName: gameName,
+                    maxPlayers: 8,
+                    players: [{ id: adminId, name: playerNames }]
+                };
+
+                if (flow.slot === 'Whole Day') {
+                    eventData.tables[flow.tableNumber].am = eventSlotData;
+                    eventData.tables[flow.tableNumber].pm = eventSlotData;
+                } else if (flow.slot === 'AM') {
+                    eventData.tables[flow.tableNumber].am = eventSlotData;
+                } else {
+                    eventData.tables[flow.tableNumber].pm = eventSlotData;
+                }
+
+                const filePath = path.join(__dirname, '../data/event-bookings.json');
+                const fullData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                fullData[flow.date] = eventData;
+                fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2));
+            } else {
+                tableManager.addReservationToSpecificTable(
+                    adminId,
+                    'Admin Booking',
+                    playerNames,
+                    gameName,
+                    flow.tableNumber,
+                    flow.date,
+                    flow.slot
+                );
+            }
+
+            activeAdminReserves.delete(interaction.user.id);
+
+            await interaction.editReply({
+                content: `✅ **Admin Override Successful!**\nReserved **Table ${flow.tableNumber}** for **${playerNames}** playing **${gameName}** on **${flow.date}** (${flow.slot}).`
+            });
+        } catch (err) {
+            await interaction.editReply({ content: `❌ Error processing reservation: ${err.message}` });
+        }
     }
 };
