@@ -42,6 +42,41 @@ module.exports = {
     },
 
     async handleSelectMenu(interaction) {
+        // CRITICAL FIX: If the user selected the slot, we must show the modal immediately 
+        // without calling deferUpdate(), because modals cannot follow a deferred update.
+        if (interaction.customId === 'adminres_slot') {
+            const slot = interaction.values[0];
+            const flow = activeAdminReserves.get(interaction.user.id) || {};
+            flow.slot = slot;
+            activeAdminReserves.set(interaction.user.id, flow);
+
+            const modal = new ModalBuilder()
+                .setCustomId('adminres_modal')
+                .setTitle('Admin Table Override Details');
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId('modal_players')
+                        .setLabel('Player / Host Name(s)')
+                        .setPlaceholder('e.g. Ross Silvers, John Doe')
+                        .setRequired(true)
+                        .setStyle(TextInputStyle.Short)
+                ),
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId('modal_game')
+                        .setLabel('Game System / Title')
+                        .setPlaceholder('e.g. BattleTech 3025')
+                        .setRequired(true)
+                        .setStyle(TextInputStyle.Short)
+                )
+            );
+
+            return interaction.showModal(modal);
+        }
+
+        // For all other menu steps, safe to defer update to prevent timeout
         await interaction.deferUpdate();
 
         if (interaction.customId === 'adminres_type') {
@@ -141,38 +176,6 @@ module.exports = {
                 content: `👑 **Admin Table Reservation** (Table **${tableNumber}** on **${flow.date}**)\nStep 4 of 4: Select time slot:`,
                 components: [new ActionRowBuilder().addComponents(slotMenu)]
             });
-        }
-        else if (interaction.customId === 'adminres_slot') {
-            const slot = interaction.values[0];
-            const flow = activeAdminReserves.get(interaction.user.id) || {};
-            flow.slot = slot;
-            activeAdminReserves.set(interaction.user.id, flow);
-
-            // Pop modal to get Host / Player name and Game name
-            const modal = new ModalBuilder()
-                .setCustomId('adminres_modal')
-                .setTitle('Admin Table Override Details');
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                        .setCustomId('modal_players')
-                        .setLabel('Player / Host Name(s)')
-                        .setPlaceholder('e.g. Ross Silvers, John Doe')
-                        .setRequired(true)
-                        .setStyle(TextInputStyle.Short)
-                ),
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                        .setCustomId('modal_game')
-                        .setLabel('Game System / Title')
-                        .setPlaceholder('e.g. BattleTech 3025')
-                        .setRequired(true)
-                        .setStyle(TextInputStyle.Short)
-                )
-            );
-
-            return interaction.showModal(modal);
         }
     },
 
