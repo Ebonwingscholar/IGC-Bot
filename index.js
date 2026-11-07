@@ -65,6 +65,16 @@ client.on('interactionCreate', async interaction => {
                 if (viewCommand && typeof viewCommand.handleSelectMenu === 'function') {
                     await viewCommand.handleSelectMenu(interaction);
                 }
+            } else if (interaction.customId.startsWith('adminres_')) {
+                const adminResCommand = client.commands.get('adminreserve');
+                if (adminResCommand && typeof adminResCommand.handleSelectMenu === 'function') {
+                    await adminResCommand.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('admincancel_')) {
+                const adminCancelCommand = client.commands.get('canceltable');
+                if (adminCancelCommand && typeof adminCancelCommand.handleSelectMenu === 'function') {
+                    await adminCancelCommand.handleSelectMenu(interaction);
+                }
             }
         }
 
@@ -89,6 +99,11 @@ client.on('interactionCreate', async interaction => {
                 const bookEventCommand = client.commands.get('bookevent');
                 if (bookEventCommand && typeof bookEventCommand.handleModalSubmit === 'function') {
                     await bookEventCommand.handleModalSubmit(interaction);
+                }
+            } else if (interaction.customId === 'adminres_modal') {
+                const adminResCommand = client.commands.get('adminreserve');
+                if (adminResCommand && typeof adminResCommand.handleModalSubmit === 'function') {
+                    await adminResCommand.handleModalSubmit(interaction);
                 }
             }
         }
