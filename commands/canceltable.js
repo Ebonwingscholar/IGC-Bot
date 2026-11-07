@@ -1,16 +1,15 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const tableManager = require('../utils/tableManager');
 const eventManager = require('../utils/eventManager');
 const fs = require('fs');
 const path = require('path');
 
+const activeCancelFlows = new Map();
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('canceltable')
-        .setDescription('Cancel a reservation by table number and date (Admin only)')
-        .addIntegerOption(option => option.setName('table').setDescription('Table number (1-12)').setRequired(true).setMinValue(1).setMaxValue(12))
-        .addStringOption(option => option.setName('date').setDescription('Date (YYYY-MM-DD), defaults to today').setRequired(false))
-        .addStringOption(option => option.setName('session').setDescription('Session slot: AM, PM, Whole Day (Events) or Evening (Thursdays)').setRequired(false)),
+        .setDescription('Admin: Interactively cancel or clear a table booking'),
 
     async execute(interaction) {
         const isAdmin = await tableManager.checkIfUserIsAdmin(interaction.user.id, interaction);
@@ -18,103 +17,161 @@ module.exports = {
             return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
         }
 
-        const tableNumber = interaction.options.getInteger('table');
-        const date = interaction.options.getString('date') || new Date().toISOString().split('T')[0];
-        const session = interaction.options.getString('session');
+        const typeMenu = new StringSelectMenuBuilder()
+            .setCustomId('admincancel_type')
+            .setPlaceholder('📂 Select cancellation category...')
+            .addOptions([
+                { label: 'Club Event Date', value: 'event', description: 'Clear a table from a custom club event', emoji: '📅' },
+                { label: 'Thursday Club Night', value: 'thursday', description: 'Clear a standard Thursday night table', emoji: '🍺' }
+            ]);
 
-        try {
-            const result = await this.processCancelTable(tableNumber, date, session);
-            await interaction.reply({ content: result, ephemeral: true });
-        } catch (error) {
-            console.error('Error in canceltable command:', error);
-            await interaction.reply({ content: '❌ An error occurred while canceling the reservation.', ephemeral: true });
-        }
+        await interaction.reply({
+            content: '❌ **Admin Table Cancellation**\nStep 1 of 3: Choose the night category:',
+            components: [new ActionRowBuilder().addComponents(typeMenu)],
+            ephemeral: true
+        });
     },
 
-    async handleDM(message, args) {
-        const userId = message.author.id;
-        if (!args || args.length === 0 || isNaN(parseInt(args.split(/\s+/)[0]))) {
-            return message.reply('Usage: `!canceltable <table_number> [YYYY-MM-DD]`');
-        }
+    async handleSelectMenu(interaction) {
+        await interaction.deferUpdate();
 
-        const parts = args.trim().split(/\s+/);
-        const tableNumber = parseInt(parts[0]);
-        const date = parts[1] || new Date().toISOString().split('T')[0];
+        if (interaction.customId === 'admincancel_type') {
+            const type = interaction.values[0];
+            activeCancelFlows.set(interaction.user.id, { type });
 
-        try {
-            const isAdmin = await tableManager.checkIfUserIsAdmin(userId);
-            if (!isAdmin) {
-                return message.reply('❌ You do not have permission to use this command.');
-            }
-            const result = await this.processCancelTable(tableNumber, date, null);
-            await message.reply(result);
-        } catch (error) {
-            console.error('Error in canceltable DM command:', error);
-            await message.reply('❌ An error occurred while canceling the reservation.');
-        }
-    },
+            if (type === 'event') {
+                const events = eventManager.getUpcomingEvents();
+                if (events.length === 0) {
+                    return interaction.editReply({ content: '❌ No upcoming events found.', components: [] });
+                }
 
-    async processCancelTable(tableNumber, date, session) {
-        // Check if date corresponds to a scheduled Event
-        const eventData = eventManager.getEventData(date);
-        const isEventDate = eventData && eventData.eventName;
+                const eventMenu = new StringSelectMenuBuilder()
+                    .setCustomId('admincancel_date')
+                    .setPlaceholder('📅 Select event date...')
+                    .addOptions(
+                        events.map(e => new StringSelectMenuOptionBuilder()
+                            .setLabel(e.label)
+                            .setValue(e.value)
+                        )
+                    );
 
-        if (isEventDate) {
-            const table = eventData.tables[tableNumber];
-
-            if (!table || (!table.am && !table.pm)) {
-                return `❌ Table ${tableNumber} has no active event bookings on ${date}.`;
-            }
-
-            const targetSlot = session ? session.toLowerCase() : null;
-            let cancelledText = '';
-
-            if (targetSlot === 'am' || targetSlot === 'morning') {
-                if (!table.am) return `❌ Table ${tableNumber} has no AM booking on ${date}.`;
-                cancelledText = `AM slot ("${table.am.gameName}")`;
-                table.am = null;
-            } else if (targetSlot === 'pm' || targetSlot === 'afternoon') {
-                if (!table.pm) return `❌ Table ${tableNumber} has no PM booking on ${date}.`;
-                cancelledText = `PM slot ("${table.pm.gameName}")`;
-                table.pm = null;
+                await interaction.editReply({
+                    content: '❌ **Admin Table Cancellation**\nStep 2 of 3: Select event date:',
+                    components: [new ActionRowBuilder().addComponents(eventMenu)]
+                });
             } else {
-                // Whole Day / No session specified -> Clear all active slots on table
-                const games = [];
-                if (table.am) games.push(`AM: ${table.am.gameName}`);
-                if (table.pm) games.push(`PM: ${table.pm.gameName}`);
-                cancelledText = games.join(' & ');
+                // Thursdays
+                const options = [];
+                let d = new Date();
+                for (let i = 0; i < 6; i++) {
+                    const day = d.getDay();
+                    const diff = (4 - day + 7) % 7;
+                    d.setDate(d.getDate() + diff);
+                    if (i === 0 && day > 4) d.setDate(d.getDate() + 7);
+                    
+                    const dateStr = d.toISOString().split('T')[0];
+                    options.push(new StringSelectMenuOptionBuilder().setLabel(dateStr).setValue(dateStr));
+                    d.setDate(d.getDate() + 7);
+                }
 
-                table.am = null;
-                table.pm = null;
+                const thursdayMenu = new StringSelectMenuBuilder()
+                    .setCustomId('admincancel_date')
+                    .setPlaceholder('📅 Select Thursday date...')
+                    .addOptions(options);
+
+                await interaction.editReply({
+                    content: '❌ **Admin Table Cancellation**\nStep 2 of 3: Select Thursday date:',
+                    components: [new ActionRowBuilder().addComponents(thursdayMenu)]
+                });
+            }
+        }
+        else if (interaction.customId === 'admincancel_date') {
+            const date = interaction.values[0];
+            const flow = activeCancelFlows.get(interaction.user.id) || {};
+            flow.date = date;
+            activeCancelFlows.set(interaction.user.id, flow);
+
+            const bookingOptions = [];
+
+            if (flow.type === 'event') {
+                const eventData = eventManager.getEventData(date);
+                for (let i = 1; i <= eventManager.MAX_TABLES; i++) {
+                    const t = eventData.tables[i];
+                    if (t.am) {
+                        bookingOptions.push(new StringSelectMenuOptionBuilder()
+                            .setLabel(`Table ${i} (AM) — ${t.am.gameName}`)
+                            .setDescription(`Host: ${t.am.organizerName}`)
+                            .setValue(`${i}_AM`)
+                        );
+                    }
+                    if (t.pm) {
+                        bookingOptions.push(new StringSelectMenuOptionBuilder()
+                            .setLabel(`Table ${i} (PM) — ${t.pm.gameName}`)
+                            .setDescription(`Host: ${t.pm.organizerName}`)
+                            .setValue(`${i}_PM`)
+                        );
+                    }
+                }
+            } else {
+                const reservations = tableManager.getAllReservations(date);
+                reservations.forEach(r => {
+                    bookingOptions.push(new StringSelectMenuOptionBuilder()
+                        .setLabel(`Table ${r.tableNumber} (${r.session || 'Evening'}) — ${r.gameName}`)
+                        .setDescription(`Players: ${r.playerNames}`)
+                        .setValue(`${r.tableNumber}_${r.id}`)
+                    );
+                });
             }
 
-            // Save updated JSON state
-            const filePath = path.join(__dirname, '../data/event-bookings.json');
-            const fullData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            fullData[date] = eventData;
-            fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2));
+            if (bookingOptions.length === 0) {
+                return interaction.editReply({
+                    content: `❌ There are no active bookings found on **${date}** to cancel.`,
+                    components: []
+                });
+            }
 
-            return `✅ **Admin Override:** Cleared Table ${tableNumber} (${cancelledText}) on Event Date **${date}**.`;
-        } else {
-            // Thursday / Regular system
-            const reservations = tableManager.getAllReservations(date);
-            const candidates = reservations.filter(r => {
-                const matchTable = r.tableNumber === tableNumber;
-                const matchSession = session ? (r.session || '').toLowerCase() === session.toLowerCase() : true;
-                return matchTable && matchSession;
+            const cancelMenu = new StringSelectMenuBuilder()
+                .setCustomId('admincancel_target')
+                .setPlaceholder('Select booking to cancel...')
+                .addOptions(bookingOptions);
+
+            await interaction.editReply({
+                content: `❌ **Admin Table Cancellation** (Date: **${date}**)\nStep 3 of 3: Select the booking to clear:`,
+                components: [new ActionRowBuilder().addComponents(cancelMenu)]
             });
+        }
+        else if (interaction.customId === 'admincancel_target') {
+            const flow = activeCancelFlows.get(interaction.user.id);
+            const val = interaction.values[0];
 
-            if (candidates.length === 0) {
-                return `❌ There is no reservation for Table ${tableNumber} on ${date}${session ? ` for session ${session}` : ''}.`;
+            let successMsg = '';
+
+            if (flow.type === 'event') {
+                const [tableStr, slot] = val.split('_');
+                const tableNumber = parseInt(tableStr);
+                const eventData = eventManager.getEventData(flow.date);
+
+                if (slot === 'AM') eventData.tables[tableNumber].am = null;
+                if (slot === 'PM') eventData.tables[tableNumber].pm = null;
+
+                const filePath = path.join(__dirname, '../data/event-bookings.json');
+                const fullData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                fullData[flow.date] = eventData;
+                fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2));
+
+                successMsg = `✅ **Admin Override:** Cleared Table ${tableNumber} (${slot}) on **${flow.date}**.`;
+            } else {
+                const [tableStr, reservationId] = val.split('_');
+                tableManager.removeReservationById(reservationId);
+                successMsg = `✅ **Admin Override:** Cancelled reservation for Table ${tableStr} on **${flow.date}**.`;
             }
 
-            if (candidates.length > 1) {
-                return `⚠️ Multiple reservations found for Table ${tableNumber} on ${date}. Please specify the session slot.`;
-            }
+            activeCancelFlows.delete(interaction.user.id);
 
-            const reservation = candidates[0];
-            tableManager.removeReservationById(reservation.id);
-            return `✅ **Admin Override:** Reservation for Table ${tableNumber} (${reservation.playerNames}) on **${reservation.date}** (${reservation.session || 'Evening'}) has been canceled.`;
+            await interaction.editReply({
+                content: successMsg,
+                components: []
+            });
         }
     }
 };
