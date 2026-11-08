@@ -3,6 +3,7 @@ const {
     ActionRowBuilder, 
     StringSelectMenuBuilder, 
     StringSelectMenuOptionBuilder,
+    UserSelectMenuBuilder,
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle
@@ -35,45 +36,31 @@ module.exports = {
             ]);
 
         await interaction.reply({
-            content: '👑 **Admin Table Reservation**\nStep 1 of 4: Choose the category of night:',
+            content: '👑 **Admin Table Reservation**\nStep 1 of 5: Choose the category of night:',
             components: [new ActionRowBuilder().addComponents(typeMenu)],
             ephemeral: true
         });
     },
 
     async handleSelectMenu(interaction) {
-        // CRITICAL FIX: If the user selected the slot, we must show the modal immediately 
-        // without calling deferUpdate(), because modals cannot follow a deferred update.
         if (interaction.customId === 'adminres_slot') {
+            await interaction.deferUpdate();
             const slot = interaction.values[0];
             const flow = activeAdminReserves.get(interaction.user.id) || {};
             flow.slot = slot;
             activeAdminReserves.set(interaction.user.id, flow);
 
-            const modal = new ModalBuilder()
-                .setCustomId('adminres_modal')
-                .setTitle('Admin Table Override Details');
+            // STEP 4: Tag players using Discord User Select Menu
+            const userSelect = new UserSelectMenuBuilder()
+                .setCustomId('adminres_select_players')
+                .setPlaceholder('👥 Select/tag players for this table (Max 8)...')
+                .setMinValues(1)
+                .setMaxValues(8);
 
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                        .setCustomId('modal_players')
-                        .setLabel('Player / Host Name(s)')
-                        .setPlaceholder('e.g. Ross Silvers, John Doe')
-                        .setRequired(true)
-                        .setStyle(TextInputStyle.Short)
-                ),
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                        .setCustomId('modal_game')
-                        .setLabel('Game System / Title')
-                        .setPlaceholder('e.g. BattleTech 3025')
-                        .setRequired(true)
-                        .setStyle(TextInputStyle.Short)
-                )
-            );
-
-            return interaction.showModal(modal);
+            return interaction.editReply({
+                content: `👑 **Admin Table Reservation** (Table **${flow.tableNumber}** on **${flow.date}** — ${flow.slot})\nStep 4 of 5: Select/tag the players for this roster:`,
+                components: [new ActionRowBuilder().addComponents(userSelect)]
+            });
         }
 
         // For all other menu steps, safe to defer update to prevent timeout
@@ -100,7 +87,7 @@ module.exports = {
                     );
 
                 await interaction.editReply({
-                    content: '👑 **Admin Table Reservation**\nStep 2 of 4: Select the event date:',
+                    content: '👑 **Admin Table Reservation**\nStep 2 of 5: Select the event date:',
                     components: [new ActionRowBuilder().addComponents(eventMenu)]
                 });
             } else {
@@ -124,7 +111,7 @@ module.exports = {
                     .addOptions(options);
 
                 await interaction.editReply({
-                    content: '👑 **Admin Table Reservation**\nStep 2 of 4: Select Thursday date:',
+                    content: '👑 **Admin Table Reservation**\nStep 2 of 5: Select Thursday date:',
                     components: [new ActionRowBuilder().addComponents(thursdayMenu)]
                 });
             }
@@ -147,7 +134,7 @@ module.exports = {
                 .addOptions(tableOptions);
 
             await interaction.editReply({
-                content: `👑 **Admin Table Reservation** (Date: **${date}**)\nStep 3 of 4: Select table number:`,
+                content: `👑 **Admin Table Reservation** (Date: **${date}**)\nStep 3 of 5: Select table number:`,
                 components: [new ActionRowBuilder().addComponents(tableMenu)]
             });
         }
@@ -173,14 +160,54 @@ module.exports = {
                 );
 
             await interaction.editReply({
-                content: `👑 **Admin Table Reservation** (Table **${tableNumber}** on **${flow.date}**)\nStep 4 of 4: Select time slot:`,
+                content: `👑 **Admin Table Reservation** (Table **${tableNumber}** on **${flow.date}**)\nSelect time slot:`,
                 components: [new ActionRowBuilder().addComponents(slotMenu)]
             });
         }
     },
 
+    async handleUserSelect(interaction) {
+        if (interaction.customId !== 'adminres_select_players') return;
+
+        const flow = activeAdminReserves.get(interaction.user.id);
+        if (!flow) {
+            return interaction.reply({ content: '❌ Session expired. Please run `/adminreserve` again.', ephemeral: true });
+        }
+
+        // Map tagged users to structured roster
+        const selectedUsers = interaction.users;
+        const initialRoster = [];
+
+        for (const [userId, user] of selectedUsers) {
+            const member = interaction.guild ? await interaction.guild.members.fetch(userId).catch(() => null) : null;
+            const displayName = member ? member.displayName : user.username;
+            initialRoster.push({ id: userId, name: displayName });
+        }
+
+        flow.taggedRoster = initialRoster;
+        activeAdminReserves.set(interaction.user.id, flow);
+
+        // Step 5: Modal to prompt for Game System/Title
+        const modal = new ModalBuilder()
+            .setCustomId('adminres_game_modal')
+            .setTitle('Admin Table Override Details');
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('modal_game')
+                    .setLabel('Game System / Title')
+                    .setPlaceholder('e.g. BattleTech 3025, Warhammer 40k')
+                    .setRequired(true)
+                    .setStyle(TextInputStyle.Short)
+            )
+        );
+
+        return interaction.showModal(modal);
+    },
+
     async handleModalSubmit(interaction) {
-        if (interaction.customId !== 'adminres_modal') return;
+        if (interaction.customId !== 'adminres_game_modal') return;
 
         await interaction.deferReply({ ephemeral: true });
 
@@ -189,19 +216,19 @@ module.exports = {
             return interaction.editReply({ content: '❌ Session expired. Please run `/adminreserve` again.' });
         }
 
-        const playerNames = interaction.fields.getTextInputValue('modal_players').trim();
         const gameName = interaction.fields.getTextInputValue('modal_game').trim();
-        const adminId = interaction.user.id;
+        const roster = flow.taggedRoster || [{ id: interaction.user.id, name: interaction.user.username }];
+        const primaryHost = roster[0];
 
         try {
             if (flow.type === 'event') {
                 const eventData = eventManager.getEventData(flow.date);
                 const eventSlotData = {
-                    organizerId: adminId,
-                    organizerName: playerNames,
+                    organizerId: primaryHost.id,
+                    organizerName: primaryHost.name,
                     gameName: gameName,
                     maxPlayers: 8,
-                    players: [{ id: adminId, name: playerNames }]
+                    players: roster
                 };
 
                 if (flow.slot === 'Whole Day') {
@@ -218,10 +245,11 @@ module.exports = {
                 fullData[flow.date] = eventData;
                 fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2));
             } else {
+                const playerNamesString = roster.map(p => p.name).join(', ');
                 tableManager.addReservationToSpecificTable(
-                    adminId,
-                    'Admin Booking',
-                    playerNames,
+                    primaryHost.id,
+                    primaryHost.name,
+                    playerNamesString,
                     gameName,
                     flow.tableNumber,
                     flow.date,
@@ -231,8 +259,9 @@ module.exports = {
 
             activeAdminReserves.delete(interaction.user.id);
 
+            const playerMentions = roster.map(p => `<@${p.id}>`).join(', ');
             await interaction.editReply({
-                content: `✅ **Admin Override Successful!**\nReserved **Table ${flow.tableNumber}** for **${playerNames}** playing **${gameName}** on **${flow.date}** (${flow.slot}).`
+                content: `✅ **Admin Override Successful!**\nReserved **Table ${flow.tableNumber}** for ${playerMentions} playing **${gameName}** on **${flow.date}** (${flow.slot}).`
             });
         } catch (err) {
             await interaction.editReply({ content: `❌ Error processing reservation: ${err.message}` });
