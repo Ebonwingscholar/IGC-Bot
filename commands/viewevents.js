@@ -19,6 +19,17 @@ function getUpcomingEventDates() {
     return dates;
 }
 
+// Helper to format player rosters cleanly regardless of schema structure
+function formatPlayerList(players) {
+    if (!players || players.length === 0) return 'None';
+    return players.map(p => {
+        if (typeof p === 'string') return p;
+        if (p.name) return p.name;
+        if (p.id) return `<@${p.id}>`;
+        return 'Unknown Player';
+    }).join(', ');
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('viewevents')
@@ -59,18 +70,18 @@ module.exports = {
             scheduleText += `📌 **Table ${i}**\n`;
 
             if (t.am && t.pm && t.am.organizerId === t.pm.organizerId && t.am.gameName === t.pm.gameName) {
-                const pList = t.am.players.map(p => p.name).join(', ');
+                const pList = formatPlayerList(t.am.players);
                 scheduleText += `• 🟢 **Whole Day:** ${t.am.gameName}\n  Players (${t.am.players.length}/${t.am.maxPlayers}): ${pList}\n`;
             } else {
                 if (t.am) {
-                    const pList = t.am.players.map(p => p.name).join(', ');
+                    const pList = formatPlayerList(t.am.players);
                     scheduleText += `• 🌅 **AM (09:00-13:00):** ${t.am.gameName}\n  Players (${t.am.players.length}/${t.am.maxPlayers}): ${pList}\n`;
                 } else {
                     scheduleText += `• 🌅 **AM:** *AVAILABLE*\n`;
                 }
 
                 if (t.pm) {
-                    const pList = t.pm.players.map(p => p.name).join(', ');
+                    const pList = formatPlayerList(t.pm.players);
                     scheduleText += `• 🌇 **PM (13:30-17:30):** ${t.pm.gameName}\n  Players (${t.pm.players.length}/${t.pm.maxPlayers}): ${pList}\n`;
                 } else {
                     scheduleText += `• 🌇 **PM:** *AVAILABLE*\n`;
