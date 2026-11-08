@@ -44,7 +44,7 @@ module.exports = {
     },
 
     async handleSelectMenu(interaction) {
-        // Step 1: Date Selected -> Pick Table/Slot
+        // Step 1: Date Selected -> Pick Table & Specific Slot (AM, PM, or Whole Day)
         if (interaction.customId === 'adminmanage_select_date') {
             const dateStr = interaction.values[0];
             const eventData = eventManager.getEventData(dateStr);
@@ -54,7 +54,8 @@ module.exports = {
                 const t = eventData.tables[i];
                 if (!t) continue;
 
-                if (t.am && t.pm && t.am.organizerId === t.pm.organizerId) {
+                // Check if it's a unified Whole Day booking
+                if (t.am && t.pm && t.am.organizerId === t.pm.organizerId && t.am.gameName === t.pm.gameName) {
                     bookedOptions.push({
                         label: `Table ${i}: ${t.am.gameName} (Whole Day)`,
                         description: `Host: ${t.am.organizerName} | Players: ${t.am.players.length}/${t.am.maxPlayers}`,
@@ -89,11 +90,11 @@ module.exports = {
 
             const tableMenu = new StringSelectMenuBuilder()
                 .setCustomId('adminmanage_select_table')
-                .setPlaceholder('📌 Select a table slot to manage...')
+                .setPlaceholder('📌 Select specific table slot to manage...')
                 .addOptions(bookedOptions.map(opt => new StringSelectMenuOptionBuilder(opt)));
 
             await interaction.update({
-                content: `📅 Date: **${dateStr}**\n\nStep 2 of 4: Select table slot to edit:`,
+                content: `📅 Date: **${dateStr}**\n\nStep 2 of 4: Select the exact table session to edit:`,
                 components: [new ActionRowBuilder().addComponents(tableMenu)]
             });
         }
@@ -103,16 +104,16 @@ module.exports = {
             const tableNumber = parseInt(tableNumStr);
             const flow = activeAdminFlows.get(interaction.user.id) || {};
             flow.tableNumber = tableNumber;
-            flow.slot = slot;
+            flow.slot = slot; // Explicitly holds 'AM', 'PM', or 'Whole Day'
             activeAdminFlows.set(interaction.user.id, flow);
 
             const actionMenu = new StringSelectMenuBuilder()
                 .setCustomId('adminmanage_select_action')
                 .setPlaceholder('⚙️ Choose management action...')
                 .addOptions([
-                    { label: 'Add Player to Roster', value: 'add_player', emoji: '➕', description: 'Select a user to add to this table' },
-                    { label: 'Remove Player from Roster', value: 'remove_player', emoji: '➖', description: 'Remove an existing player from the table' },
-                    { label: 'Edit Game Name / Capacity', value: 'edit_details', emoji: '📝', description: 'Modify game title or maximum capacity' }
+                    { label: `Add Player to ${slot} Roster`, value: 'add_player', emoji: '➕', description: `Select a user to add to Table ${tableNumber} (${slot})` },
+                    { label: `Remove Player from ${slot} Roster`, value: 'remove_player', emoji: '➖', description: `Remove an existing player from Table ${tableNumber} (${slot})` },
+                    { label: `Edit Details (${slot})`, value: 'edit_details', emoji: '📝', description: `Modify game title or capacity for Table ${tableNumber} (${slot})` }
                 ]);
 
             await interaction.update({
@@ -130,7 +131,7 @@ module.exports = {
             if (action === 'add_player') {
                 const userSelect = new UserSelectMenuBuilder()
                     .setCustomId('adminmanage_add_user')
-                    .setPlaceholder('👤 Select member to add to table...')
+                    .setPlaceholder(`👤 Select member to add to ${flow.slot}...`)
                     .setMinValues(1)
                     .setMaxValues(1);
 
@@ -146,14 +147,14 @@ module.exports = {
 
                 if (!slotData || slotData.players.length === 0) {
                     return interaction.update({
-                        content: `❌ No players on roster for Table ${flow.tableNumber}.`,
+                        content: `❌ No players on roster for Table ${flow.tableNumber} (${flow.slot}).`,
                         components: []
                     });
                 }
 
                 const playerMenu = new StringSelectMenuBuilder()
                     .setCustomId('adminmanage_remove_user')
-                    .setPlaceholder('❌ Select player to remove...')
+                    .setPlaceholder(`❌ Select player to remove from ${flow.slot}...`)
                     .addOptions(
                         slotData.players.map(p => new StringSelectMenuOptionBuilder()
                             .setLabel(p.name)
@@ -174,7 +175,7 @@ module.exports = {
 
                 const modal = new ModalBuilder()
                     .setCustomId('adminmanage_details_modal')
-                    .setTitle(`Edit Table ${flow.tableNumber} Details`);
+                    .setTitle(`Edit Table ${flow.tableNumber} (${flow.slot})`);
 
                 modal.addComponents(
                     new ActionRowBuilder().addComponents(
@@ -209,12 +210,12 @@ module.exports = {
 
                 if (res.freed) {
                     await interaction.update({
-                        content: `✅ Removed <@${targetUserId}> from **Table ${flow.tableNumber}**. Roster was empty, so the table slot is now available!`,
+                        content: `✅ Removed <@${targetUserId}> from **Table ${flow.tableNumber}** (${flow.slot}). Roster was empty, so that slot is now free!`,
                         components: []
                     });
                 } else {
                     await interaction.update({
-                        content: `✅ Removed <@${targetUserId}> from **Table ${flow.tableNumber}** roster on **${flow.date}**.`,
+                        content: `✅ Removed <@${targetUserId}> from **Table ${flow.tableNumber}** (${flow.slot}) roster on **${flow.date}**.`,
                         components: []
                     });
                 }
