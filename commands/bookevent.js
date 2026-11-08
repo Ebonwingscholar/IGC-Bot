@@ -14,40 +14,30 @@ require('dotenv').config();
 // Temporary state store for event booking wizard
 const activeEventFlows = new Map();
 
-// Helper to generate next few event dates (e.g. Saturdays)
-function getUpcomingEventDates() {
-    const dates = [];
-    const now = new Date();
-    let d = new Date(now);
-    
-    // Find next Saturday
-    let day = d.getDay();
-    let diff = (6 - day + 7) % 7;
-    if (diff === 0 && now.getHours() >= 18) diff = 7;
-    d.setDate(d.getDate() + diff);
-
-    for (let i = 0; i < 4; i++) {
-        const value = d.toISOString().split('T')[0];
-        const label = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
-        dates.push({ label, value });
-        d.setDate(d.getDate() + 7);
-    }
-    return dates;
-}
-
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bookevent')
         .setDescription('Book or join a table for an upcoming club event'),
 
     async execute(interaction) {
-        const dates = getUpcomingEventDates();
+        // Fetch real upcoming events configured via /createevent
+        const events = eventManager.getUpcomingEvents();
+
+        if (!events || events.length === 0) {
+            return interaction.reply({ 
+                content: '❌ There are currently no club events scheduled for booking. An admin needs to create one using `/createevent`.', 
+                ephemeral: true 
+            });
+        }
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId('event_select_date')
             .setPlaceholder('📅 Choose an event date...')
             .addOptions(
-                dates.map(d => new StringSelectMenuOptionBuilder().setLabel(d.label).setValue(d.value))
+                events.map(e => new StringSelectMenuOptionBuilder()
+                    .setLabel(e.label || e.date)
+                    .setValue(e.value || e.date)
+                )
             );
 
         await interaction.reply({
