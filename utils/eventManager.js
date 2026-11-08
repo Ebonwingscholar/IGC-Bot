@@ -155,56 +155,62 @@ module.exports = {
         return slotData;
     },
 
-    // Admin: Add a player to a table slot roster
+    // Admin: Add a player to a table slot roster (Fixed to respect AM/PM separation)
     adminAddPlayer(dateStr, tableNumber, slot, userId, userName) {
         const event = this.getEventData(dateStr);
         const t = event.tables[tableNumber];
         if (!t) throw new Error(`Table ${tableNumber} does not exist.`);
         
-        const slotKey = slot === 'Whole Day' ? (t.am ? 'am' : 'pm') : slot.toLowerCase();
-        const slotData = t[slotKey];
-        if (!slotData) throw new Error(`Table ${tableNumber} is not currently booked for ${slot}.`);
+        const slotKey = slot.toLowerCase();
+        const isUnifiedWholeDay = (slotKey === 'whole day') || (t.am && t.pm && t.am.organizerId === t.pm.organizerId && t.am.gameName === t.pm.gameName);
+        const targetSlotData = (slotKey === 'whole day') ? (t.am || t.pm) : t[slotKey];
+        
+        if (!targetSlotData) throw new Error(`Table ${tableNumber} is not currently booked for ${slot}.`);
 
-        if (slotData.players.some(p => p.id === userId)) {
-            throw new Error('This user is already on the roster for this table.');
+        if (targetSlotData.players.some(p => p.id === userId)) {
+            throw new Error('This user is already on the roster for this table slot.');
         }
 
-        slotData.players.push({ id: userId, name: userName });
+        targetSlotData.players.push({ id: userId, name: userName });
 
-        if (slot === 'Whole Day') {
-            if (t.am) t.am = slotData;
-            if (t.pm) t.pm = slotData;
+        if (isUnifiedWholeDay) {
+            if (t.am) t.am = targetSlotData;
+            if (t.pm) t.pm = targetSlotData;
+        } else {
+            t[slotKey] = targetSlotData;
         }
 
         saveData({ ...getData(), [dateStr]: event });
-        return slotData;
+        return targetSlotData;
     },
 
-    // Admin: Remove a player from a table slot roster
+    // Admin: Remove a player from a table slot roster (Fixed to protect independent AM/PM slots)
     adminRemovePlayer(dateStr, tableNumber, slot, targetUserId) {
         const event = this.getEventData(dateStr);
         const t = event.tables[tableNumber];
         if (!t) throw new Error(`Table ${tableNumber} does not exist.`);
 
-        const slotKey = slot === 'Whole Day' ? (t.am ? 'am' : 'pm') : slot.toLowerCase();
-        const slotData = t[slotKey];
-        if (!slotData) throw new Error(`Table ${tableNumber} is not currently booked for ${slot}.`);
+        const slotKey = slot.toLowerCase();
+        const isUnifiedWholeDay = (slotKey === 'whole day') || (t.am && t.pm && t.am.organizerId === t.pm.organizerId && t.am.gameName === t.pm.gameName);
+        const targetSlotData = (slotKey === 'whole day') ? (t.am || t.pm) : t[slotKey];
+        
+        if (!targetSlotData) throw new Error(`Table ${tableNumber} is not currently booked for ${slot}.`);
 
-        const initialCount = slotData.players.length;
-        slotData.players = slotData.players.filter(p => p.id !== targetUserId);
+        const initialCount = targetSlotData.players.length;
+        targetSlotData.players = targetSlotData.players.filter(p => p.id !== targetUserId);
 
-        if (slotData.players.length === initialCount) {
+        if (targetSlotData.players.length === initialCount) {
             throw new Error('Player was not found on this table roster.');
         }
 
         // Update organizer if the organizer was removed
-        if (slotData.organizerId === targetUserId) {
-            if (slotData.players.length > 0) {
-                slotData.organizerId = slotData.players[0].id;
-                slotData.organizerName = slotData.players[0].name;
+        if (targetSlotData.organizerId === targetUserId) {
+            if (targetSlotData.players.length > 0) {
+                targetSlotData.organizerId = targetSlotData.players[0].id;
+                targetSlotData.organizerName = targetSlotData.players[0].name;
             } else {
-                // If roster is empty, free the table slot
-                if (slot === 'Whole Day') {
+                // If roster is empty, free only the specific slot
+                if (isUnifiedWholeDay) {
                     t.am = null;
                     t.pm = null;
                 } else {
@@ -215,34 +221,40 @@ module.exports = {
             }
         }
 
-        if (slot === 'Whole Day') {
-            if (t.am) t.am = slotData;
-            if (t.pm) t.pm = slotData;
+        if (isUnifiedWholeDay) {
+            if (t.am) t.am = targetSlotData;
+            if (t.pm) t.pm = targetSlotData;
+        } else {
+            t[slotKey] = targetSlotData;
         }
 
         saveData({ ...getData(), [dateStr]: event });
-        return { freed: false, slotData };
+        return { freed: false, slotData: targetSlotData };
     },
 
-    // Admin: Update game name and capacity for a table slot
+    // Admin: Update game name and capacity for a table slot (Fixed for isolated slots)
     adminUpdateDetails(dateStr, tableNumber, slot, gameName, maxPlayers) {
         const event = this.getEventData(dateStr);
         const t = event.tables[tableNumber];
         if (!t) throw new Error(`Table ${tableNumber} does not exist.`);
 
-        const slotKey = slot === 'Whole Day' ? (t.am ? 'am' : 'pm') : slot.toLowerCase();
-        const slotData = t[slotKey];
-        if (!slotData) throw new Error(`Table ${tableNumber} is not currently booked for ${slot}.`);
+        const slotKey = slot.toLowerCase();
+        const isUnifiedWholeDay = (slotKey === 'whole day') || (t.am && t.pm && t.am.organizerId === t.pm.organizerId && t.am.gameName === t.pm.gameName);
+        const targetSlotData = (slotKey === 'whole day') ? (t.am || t.pm) : t[slotKey];
 
-        if (gameName) slotData.gameName = gameName;
-        if (maxPlayers) slotData.maxPlayers = parseInt(maxPlayers);
+        if (!targetSlotData) throw new Error(`Table ${tableNumber} is not currently booked for ${slot}.`);
 
-        if (slot === 'Whole Day') {
-            if (t.am) t.am = slotData;
-            if (t.pm) t.pm = slotData;
+        if (gameName) targetSlotData.gameName = gameName;
+        if (maxPlayers) targetSlotData.maxPlayers = parseInt(maxPlayers);
+
+        if (isUnifiedWholeDay) {
+            if (t.am) t.am = targetSlotData;
+            if (t.pm) t.pm = targetSlotData;
+        } else {
+            t[slotKey] = targetSlotData;
         }
 
         saveData({ ...getData(), [dateStr]: event });
-        return slotData;
+        return targetSlotData;
     }
 };
