@@ -133,6 +133,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (adminManageCmd && typeof adminManageCmd.handleUserSelect === 'function') {
                     await adminManageCmd.handleUserSelect(interaction);
                 }
+            } else if (interaction.customId === 'adminres_select_players') {
+                const adminResCmd = client.commands.get('adminreserve');
+                if (adminResCmd && typeof adminResCmd.handleUserSelect === 'function') {
+                    await adminResCmd.handleUserSelect(interaction);
+                }
             }
         }
 
@@ -148,7 +153,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (bookEventCmd && typeof bookEventCmd.handleModalSubmit === 'function') {
                     await bookEventCmd.handleModalSubmit(interaction);
                 }
-            } else if (interaction.customId === 'adminres_modal') {
+            } else if (interaction.customId === 'adminres_modal' || interaction.customId === 'adminres_game_modal') {
                 const adminResCmd = client.commands.get('adminreserve');
                 if (adminResCmd && typeof adminResCmd.handleModalSubmit === 'function') {
                     await adminResCmd.handleModalSubmit(interaction);
