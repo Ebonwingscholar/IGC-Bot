@@ -34,10 +34,10 @@ module.exports = {
                 dates.map(d => new StringSelectMenuOptionBuilder().setLabel(d.label).setValue(d.value))
             );
 
+        // PUBLIC INITIAL REPLY: ephemeral property removed so everyone can see the menu and result
         await interaction.reply({
-            content: '📊 **Inverurie Gaming Club - Event Schedules**\nSelect an event date to inspect table bookings:',
-            components: [new ActionRowBuilder().addComponents(selectMenu)],
-            ephemeral: true
+            content: '📊 **Inverurie Gaming Club - Event Schedules**\nSelect an event date to view:',
+            components: [new ActionRowBuilder().addComponents(selectMenu)]
         });
     },
 
@@ -83,6 +83,7 @@ module.exports = {
             scheduleText = `📅 **Event Table Schedule — ${dateStr}**\n\nNo tables have been booked for this event yet! Be the first to book using \`/bookevent\`.`;
         }
 
+        // PUBLIC UPDATE: Replaces the prompt message with the public schedule view
         await interaction.update({
             content: scheduleText,
             components: []
