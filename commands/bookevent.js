@@ -3,6 +3,7 @@ const {
     ActionRowBuilder, 
     StringSelectMenuBuilder, 
     StringSelectMenuOptionBuilder,
+    UserSelectMenuBuilder,
     ModalBuilder, 
     TextInputBuilder, 
     TextInputStyle
@@ -13,70 +14,51 @@ require('dotenv').config();
 // Temporary state store for event booking wizard
 const activeEventFlows = new Map();
 
+// Helper to generate next few event dates (e.g. Saturdays)
+function getUpcomingEventDates() {
+    const dates = [];
+    const now = new Date();
+    let d = new Date(now);
+    
+    // Find next Saturday
+    let day = d.getDay();
+    let diff = (6 - day + 7) % 7;
+    if (diff === 0 && now.getHours() >= 18) diff = 7;
+    d.setDate(d.getDate() + diff);
+
+    for (let i = 0; i < 4; i++) {
+        const value = d.toISOString().split('T')[0];
+        const label = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+        dates.push({ label, value });
+        d.setDate(d.getDate() + 7);
+    }
+    return dates;
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bookevent')
         .setDescription('Book or join a table for an upcoming club event'),
 
     async execute(interaction) {
-        const events = eventManager.getUpcomingEvents();
-
-        if (events.length === 0) {
-            return interaction.reply({
-                content: '❌ There are currently no upcoming club events scheduled. Check back later!',
-                ephemeral: true
-            });
-        }
+        const dates = getUpcomingEventDates();
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId('event_select_date')
-            .setPlaceholder('📅 Choose an upcoming event...')
+            .setPlaceholder('📅 Choose an event date...')
             .addOptions(
-                events.map(e => new StringSelectMenuOptionBuilder()
-                    .setLabel(e.label)
-                    .setValue(e.value)
-                )
+                dates.map(d => new StringSelectMenuOptionBuilder().setLabel(d.label).setValue(d.value))
             );
 
         await interaction.reply({
-            content: '🎲 **Inverurie Gaming Club - Event Booking**\nStep 1 of 3: Select an upcoming event:',
+            content: '🎲 **Inverurie Gaming Club - Event Booking**\nStep 1 of 4: Select event date:',
             components: [new ActionRowBuilder().addComponents(selectMenu)],
             ephemeral: true
         });
     },
 
+    // Handle String Select Menus (Date, Slot, Action, Join Table)
     async handleSelectMenu(interaction) {
-        // Step 3 (Start): Must show modal immediately without deferring
-        if (interaction.customId === 'event_select_action' && interaction.values[0] === 'start') {
-            const modal = new ModalBuilder()
-                .setCustomId('event_start_modal')
-                .setTitle('Host Event Table');
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                        .setCustomId('modal_game')
-                        .setLabel('Game System / Scenario')
-                        .setPlaceholder('e.g. BattleTech 3025, Warhammer 40k, Board Games')
-                        .setRequired(true)
-                        .setStyle(TextInputStyle.Short)
-                ),
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                        .setCustomId('modal_max_players')
-                        .setLabel('Max Players Allowed (up to 8)')
-                        .setValue('8')
-                        .setRequired(true)
-                        .setStyle(TextInputStyle.Short)
-                )
-            );
-
-            return interaction.showModal(modal);
-        }
-
-        // For all other menu steps, safe to defer update to prevent timeout
-        await interaction.deferUpdate();
-
         if (interaction.customId === 'event_select_date') {
             const date = interaction.values[0];
             activeEventFlows.set(interaction.user.id, { date });
@@ -90,11 +72,12 @@ module.exports = {
                     { label: 'Whole Day', value: 'Whole Day', description: '09:00 - 17:30 (Both AM & PM)' }
                 ]);
 
-            await interaction.editReply({
-                content: `📅 Event Date: **${date}**\n\nStep 2 of 3: Select your session time slot:`,
+            await interaction.update({
+                content: `📅 Date: **${date}**\n\nStep 2 of 4: Select your session time slot:`,
                 components: [new ActionRowBuilder().addComponents(slotMenu)]
             });
         } 
+        // Step 2: Slot Selected -> Choose Action (Start New Table vs Join Existing)
         else if (interaction.customId === 'event_select_slot') {
             const slot = interaction.values[0];
             const flow = activeEventFlows.get(interaction.user.id) || {};
@@ -109,19 +92,35 @@ module.exports = {
                     { label: 'Join an existing game / table', value: 'join', description: 'Join someone else already booked in this slot', emoji: '🟡' }
                 ]);
 
-            await interaction.editReply({
-                content: `📅 Event Date: **${flow.date}** | ⏱️ Slot: **${slot}**\n\nStep 3 of 3: Do you want to start a new table or join an existing one?`,
+            await interaction.update({
+                content: `📅 Date: **${flow.date}** | ⏱️ Slot: **${slot}**\n\nStep 3 of 4: Do you want to start a new table or join an existing one?`,
                 components: [new ActionRowBuilder().addComponents(actionMenu)]
             });
         }
+        // Step 3: Action Selected -> Player Select Menu (Start) or Join List (Join)
         else if (interaction.customId === 'event_select_action') {
             const action = interaction.values[0];
             const flow = activeEventFlows.get(interaction.user.id) || {};
+            flow.action = action;
+            activeEventFlows.set(interaction.user.id, flow);
 
-            if (action === 'join') {
+            if (action === 'start') {
+                // Show User Select Menu to tag additional players before opening modal
+                const playerSelect = new UserSelectMenuBuilder()
+                    .setCustomId('event_select_players')
+                    .setPlaceholder('👥 Tag additional players joining your table (Optional)...')
+                    .setMinValues(0)
+                    .setMaxValues(7);
+
+                await interaction.update({
+                    content: `📅 Date: **${flow.date}** | ⏱️ Slot: **${flow.slot}**\n\nStep 4 of 4: Select additional members joining your table (or skip):`,
+                    components: [new ActionRowBuilder().addComponents(playerSelect)]
+                });
+            } else {
+                // Show list of joinable tables
                 const joinable = eventManager.getJoinableTables(flow.date, flow.slot);
                 if (joinable.length === 0) {
-                    return interaction.editReply({
+                    return interaction.update({
                         content: `❌ There are no open tables seeking players for **${flow.slot}** on **${flow.date}**. Try starting a new table instead!`,
                         components: []
                     });
@@ -138,12 +137,13 @@ module.exports = {
                         )
                     );
 
-                await interaction.editReply({
-                    content: `📅 Event Date: **${flow.date}** | ⏱️ Slot: **${flow.slot}**\n\nSelect a table to join:`,
+                await interaction.update({
+                    content: `📅 Date: **${flow.date}** | ⏱️ Slot: **${flow.slot}**\n\nSelect a table to join:`,
                     components: [new ActionRowBuilder().addComponents(tableMenu)]
                 });
             }
         }
+        // Table Chosen to Join -> Execute Join
         else if (interaction.customId === 'event_join_table') {
             const tableNumber = parseInt(interaction.values[0]);
             const flow = activeEventFlows.get(interaction.user.id);
@@ -153,16 +153,59 @@ module.exports = {
                 const updatedSlot = eventManager.joinBooking(flow.date, tableNumber, flow.slot, interaction.user.id, nickname);
                 activeEventFlows.delete(interaction.user.id);
 
-                await interaction.editReply({
+                await interaction.update({
                     content: `✅ Successfully joined **Table ${tableNumber}** (${updatedSlot.gameName}) for **${flow.slot}** on **${flow.date}**!`,
                     components: []
                 });
             } catch (err) {
-                await interaction.editReply({ content: `❌ ${err.message}`, components: [] });
+                await interaction.update({ content: `❌ ${err.message}`, components: [] });
             }
         }
     },
 
+    // Step 4 (Start): User Select Menu -> Capture Tagged Players and Show Modal IMMEDIATELY
+    async handleUserSelect(interaction) {
+        if (interaction.customId !== 'event_select_players') return;
+
+        const flow = activeEventFlows.get(interaction.user.id) || {};
+        
+        // Save tagged users into wizard flow
+        const selectedUsers = Array.from(interaction.users.values());
+        flow.additionalPlayers = selectedUsers.map(u => ({
+            id: u.id,
+            name: u.displayName || u.username
+        }));
+        
+        activeEventFlows.set(interaction.user.id, flow);
+
+        // Show Modal immediately (Must be direct response without deferring)
+        const modal = new ModalBuilder()
+            .setCustomId('event_start_modal')
+            .setTitle('Host Event Table');
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('modal_game')
+                    .setLabel('Game System / Scenario')
+                    .setPlaceholder('e.g. Warhammer 40k, Marvel Crisis Protocol')
+                    .setRequired(true)
+                    .setStyle(TextInputStyle.Short)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('modal_max_players')
+                    .setLabel('Max Players Allowed (up to 8)')
+                    .setValue('8')
+                    .setRequired(true)
+                    .setStyle(TextInputStyle.Short)
+            )
+        );
+
+        return interaction.showModal(modal);
+    },
+
+    // Step 5 (Start): Modal Submitted -> Create Booking & Send Payment DM
     async handleModalSubmit(interaction) {
         if (interaction.customId !== 'event_start_modal') return;
 
@@ -171,33 +214,48 @@ module.exports = {
         const flow = activeEventFlows.get(interaction.user.id) || {};
         const gameName = interaction.fields.getTextInputValue('modal_game').trim();
         const maxPlayers = parseInt(interaction.fields.getTextInputValue('modal_max_players').trim()) || 8;
-        const nickname = interaction.member ? interaction.member.displayName : interaction.user.username;
+        const hostNickname = interaction.member ? interaction.member.displayName : interaction.user.username;
+
+        // Construct initial roster: Host first, then any tagged users
+        const initialRoster = [{ id: interaction.user.id, name: hostNickname }];
+        if (flow.additionalPlayers && flow.additionalPlayers.length > 0) {
+            flow.additionalPlayers.forEach(p => {
+                if (p.id !== interaction.user.id) {
+                    initialRoster.push(p);
+                }
+            });
+        }
 
         try {
             const tableNumber = eventManager.createBooking(
                 flow.date,
                 flow.slot,
                 interaction.user.id,
-                nickname,
+                hostNickname,
                 gameName,
-                Math.min(maxPlayers, 8)
+                Math.min(maxPlayers, 8),
+                initialRoster
             );
 
-            await this.sendPaymentReminder(interaction, tableNumber, gameName, flow.date, flow.slot);
+            // Send Payment Reminder DM to Host
+            await this.sendPaymentReminder(interaction.user.id, tableNumber, gameName, flow.date, flow.slot);
 
             activeEventFlows.delete(interaction.user.id);
 
+            const rosterMentions = initialRoster.map(p => `<@${p.id}>`).join(', ');
+
             await interaction.editReply({
-                content: `✅ **Table ${tableNumber}** reserved for **${gameName}** (${flow.slot}) on **${flow.date}**!\n💳 Payment reminder has been sent to your DMs.`
+                content: `✅ **Table ${tableNumber}** reserved for **${gameName}** (${flow.slot}) on **${flow.date}**!\n**Roster:** ${rosterMentions}\n💳 Payment reminder has been sent to your DMs.`
             });
         } catch (err) {
             await interaction.editReply({ content: `❌ ${err.message}` });
         }
     },
 
-    async sendPaymentReminder(interaction, tableNumber, gameName, date, slot) {
+    async sendPaymentReminder(userId, tableNumber, gameName, date, slot) {
         try {
-            const user = interaction.user;
+            const { client } = require('../index');
+            const user = await client.users.fetch(userId);
             if (user) {
                 await user.send(`
 **Payment Reminder for Event Table ${tableNumber}**
