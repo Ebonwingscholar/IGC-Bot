@@ -102,19 +102,24 @@ module.exports = {
         return joinable;
     },
 
-    // Create a new game/table booking
-    createBooking(dateStr, slot, userId, userName, gameName, maxPlayers) {
+    // Create a new game/table booking (Updated to accept initialRoster)
+    createBooking(dateStr, slot, userId, userName, gameName, maxPlayers, initialRoster = null) {
         const event = this.getEventData(dateStr);
         const tableNum = this.findAvailableTable(dateStr, slot);
 
         if (!tableNum) throw new Error(`Sorry, all tables are fully booked for ${slot} on this date!`);
+
+        // Use passed initialRoster if provided, otherwise default to just the organizer
+        const finalPlayers = (initialRoster && initialRoster.length > 0)
+            ? initialRoster
+            : [{ id: userId, name: userName }];
 
         const slotData = {
             organizerId: userId,
             organizerName: userName,
             gameName: gameName,
             maxPlayers: parseInt(maxPlayers) || 8,
-            players: [{ id: userId, name: userName }]
+            players: finalPlayers
         };
 
         if (slot === 'Whole Day') {
