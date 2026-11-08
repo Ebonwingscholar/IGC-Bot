@@ -83,6 +83,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (reserveCmd && typeof reserveCmd.handleSelectMenu === 'function') {
                     await reserveCmd.handleSelectMenu(interaction);
                 }
+            } else if (interaction.customId.startsWith('adminmanage_')) {
+                const adminManageCmd = client.commands.get('adminmanage');
+                if (adminManageCmd && typeof adminManageCmd.handleSelectMenu === 'function') {
+                    await adminManageCmd.handleSelectMenu(interaction);
+                }
             } else if (interaction.customId.startsWith('event_')) {
                 const bookEventCmd = client.commands.get('bookevent');
                 if (bookEventCmd && typeof bookEventCmd.handleSelectMenu === 'function') {
@@ -123,6 +128,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (bookEventCmd && typeof bookEventCmd.handleUserSelect === 'function') {
                     await bookEventCmd.handleUserSelect(interaction);
                 }
+            } else if (interaction.customId === 'adminmanage_add_user') {
+                const adminManageCmd = client.commands.get('adminmanage');
+                if (adminManageCmd && typeof adminManageCmd.handleUserSelect === 'function') {
+                    await adminManageCmd.handleUserSelect(interaction);
+                }
             }
         }
 
@@ -142,6 +152,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 const adminResCmd = client.commands.get('adminreserve');
                 if (adminResCmd && typeof adminResCmd.handleModalSubmit === 'function') {
                     await adminResCmd.handleModalSubmit(interaction);
+                }
+            } else if (interaction.customId === 'adminmanage_details_modal') {
+                const adminManageCmd = client.commands.get('adminmanage');
+                if (adminManageCmd && typeof adminManageCmd.handleModalSubmit === 'function') {
+                    await adminManageCmd.handleModalSubmit(interaction);
                 }
             }
         }
