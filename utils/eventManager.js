@@ -153,5 +153,96 @@ module.exports = {
 
         saveData({ ...getData(), [dateStr]: event });
         return slotData;
+    },
+
+    // Admin: Add a player to a table slot roster
+    adminAddPlayer(dateStr, tableNumber, slot, userId, userName) {
+        const event = this.getEventData(dateStr);
+        const t = event.tables[tableNumber];
+        if (!t) throw new Error(`Table ${tableNumber} does not exist.`);
+        
+        const slotKey = slot === 'Whole Day' ? (t.am ? 'am' : 'pm') : slot.toLowerCase();
+        const slotData = t[slotKey];
+        if (!slotData) throw new Error(`Table ${tableNumber} is not currently booked for ${slot}.`);
+
+        if (slotData.players.some(p => p.id === userId)) {
+            throw new Error('This user is already on the roster for this table.');
+        }
+
+        slotData.players.push({ id: userId, name: userName });
+
+        if (slot === 'Whole Day') {
+            if (t.am) t.am = slotData;
+            if (t.pm) t.pm = slotData;
+        }
+
+        saveData({ ...getData(), [dateStr]: event });
+        return slotData;
+    },
+
+    // Admin: Remove a player from a table slot roster
+    adminRemovePlayer(dateStr, tableNumber, slot, targetUserId) {
+        const event = this.getEventData(dateStr);
+        const t = event.tables[tableNumber];
+        if (!t) throw new Error(`Table ${tableNumber} does not exist.`);
+
+        const slotKey = slot === 'Whole Day' ? (t.am ? 'am' : 'pm') : slot.toLowerCase();
+        const slotData = t[slotKey];
+        if (!slotData) throw new Error(`Table ${tableNumber} is not currently booked for ${slot}.`);
+
+        const initialCount = slotData.players.length;
+        slotData.players = slotData.players.filter(p => p.id !== targetUserId);
+
+        if (slotData.players.length === initialCount) {
+            throw new Error('Player was not found on this table roster.');
+        }
+
+        // Update organizer if the organizer was removed
+        if (slotData.organizerId === targetUserId) {
+            if (slotData.players.length > 0) {
+                slotData.organizerId = slotData.players[0].id;
+                slotData.organizerName = slotData.players[0].name;
+            } else {
+                // If roster is empty, free the table slot
+                if (slot === 'Whole Day') {
+                    t.am = null;
+                    t.pm = null;
+                } else {
+                    t[slotKey] = null;
+                }
+                saveData({ ...getData(), [dateStr]: event });
+                return { freed: true };
+            }
+        }
+
+        if (slot === 'Whole Day') {
+            if (t.am) t.am = slotData;
+            if (t.pm) t.pm = slotData;
+        }
+
+        saveData({ ...getData(), [dateStr]: event });
+        return { freed: false, slotData };
+    },
+
+    // Admin: Update game name and capacity for a table slot
+    adminUpdateDetails(dateStr, tableNumber, slot, gameName, maxPlayers) {
+        const event = this.getEventData(dateStr);
+        const t = event.tables[tableNumber];
+        if (!t) throw new Error(`Table ${tableNumber} does not exist.`);
+
+        const slotKey = slot === 'Whole Day' ? (t.am ? 'am' : 'pm') : slot.toLowerCase();
+        const slotData = t[slotKey];
+        if (!slotData) throw new Error(`Table ${tableNumber} is not currently booked for ${slot}.`);
+
+        if (gameName) slotData.gameName = gameName;
+        if (maxPlayers) slotData.maxPlayers = parseInt(maxPlayers);
+
+        if (slot === 'Whole Day') {
+            if (t.am) t.am = slotData;
+            if (t.pm) t.pm = slotData;
+        }
+
+        saveData({ ...getData(), [dateStr]: event });
+        return slotData;
     }
 };
