@@ -47,36 +47,106 @@ client.once(Events.ClientReady, () => {
     });
 });
 
-// Handle command interactions
+// Central Interaction Router
 client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-
-    console.log(`Received slash command: ${interaction.commandName}`);
-
-    // Check if the interaction is in an allowed channel (or DM)
-    if (interaction.channel && interaction.channel.type !== 'DM') {
-        const allowedChannels = config.ALLOWED_CHANNEL_IDS;
-        if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
-            console.log('Command not in an allowed channel');
-            await interaction.reply({ 
-                content: 'This command can only be used in designated channels or via DM.', 
-                ephemeral: true 
-            });
-            return;
-        }
-    }
-
-    const command = client.commands.get(interaction.commandName);
-    if (!command) {
-        console.error(`No command matching ${interaction.commandName} was found.`);
-        return;
-    }
-
     try {
-        console.log(`Executing command: ${interaction.commandName}`);
-        await command.execute(interaction);
+        // Channel permission check (skipped for DMs)
+        if (interaction.channel && interaction.channel.type !== 'DM') {
+            const allowedChannels = config.ALLOWED_CHANNEL_IDS;
+            if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+                console.log('Interaction not in an allowed channel');
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({ 
+                        content: 'This command can only be used in designated channels or via DM.', 
+                        ephemeral: true 
+                    });
+                }
+                return;
+            }
+        }
+
+        // 1. Handle Slash Commands
+        if (interaction.isChatInputCommand()) {
+            console.log(`Received slash command: ${interaction.commandName}`);
+            const command = client.commands.get(interaction.commandName);
+            if (!command) {
+                console.error(`No command matching ${interaction.commandName} was found.`);
+                return;
+            }
+            await command.execute(interaction);
+        }
+
+        // 2. Handle String Select Menus (Dropdowns)
+        else if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'select_reserve_date') {
+                const reserveCmd = client.commands.get('reserve');
+                if (reserveCmd && typeof reserveCmd.handleSelectMenu === 'function') {
+                    await reserveCmd.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('event_')) {
+                const bookEventCmd = client.commands.get('bookevent');
+                if (bookEventCmd && typeof bookEventCmd.handleSelectMenu === 'function') {
+                    await bookEventCmd.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('cancelevent_')) {
+                const cancelCmd = client.commands.get('canceleventbooking');
+                if (cancelCmd && typeof cancelCmd.handleSelectMenu === 'function') {
+                    await cancelCmd.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('view_')) {
+                const viewCmd = client.commands.get('viewevents');
+                if (viewCmd && typeof viewCmd.handleSelectMenu === 'function') {
+                    await viewCmd.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('adminres_')) {
+                const adminResCmd = client.commands.get('adminreserve');
+                if (adminResCmd && typeof adminResCmd.handleSelectMenu === 'function') {
+                    await adminResCmd.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('admincancel_')) {
+                const adminCancelCmd = client.commands.get('canceltable');
+                if (adminCancelCmd && typeof adminCancelCmd.handleSelectMenu === 'function') {
+                    await adminCancelCmd.handleSelectMenu(interaction);
+                }
+            }
+        }
+
+        // 3. Handle User Select Menus (Tagging Club Members)
+        else if (interaction.isUserSelectMenu()) {
+            if (interaction.customId === 'select_reserve_players') {
+                const reserveCmd = client.commands.get('reserve');
+                if (reserveCmd && typeof reserveCmd.handleUserSelect === 'function') {
+                    await reserveCmd.handleUserSelect(interaction);
+                }
+            } else if (interaction.customId === 'event_select_players') {
+                const bookEventCmd = client.commands.get('bookevent');
+                if (bookEventCmd && typeof bookEventCmd.handleUserSelect === 'function') {
+                    await bookEventCmd.handleUserSelect(interaction);
+                }
+            }
+        }
+
+        // 4. Handle Modal Submissions
+        else if (interaction.isModalSubmit()) {
+            if (interaction.customId === 'reserve_final_modal') {
+                const reserveCmd = client.commands.get('reserve');
+                if (reserveCmd && typeof reserveCmd.handleModalSubmit === 'function') {
+                    await reserveCmd.handleModalSubmit(interaction);
+                }
+            } else if (interaction.customId === 'event_start_modal') {
+                const bookEventCmd = client.commands.get('bookevent');
+                if (bookEventCmd && typeof bookEventCmd.handleModalSubmit === 'function') {
+                    await bookEventCmd.handleModalSubmit(interaction);
+                }
+            } else if (interaction.customId === 'adminres_modal') {
+                const adminResCmd = client.commands.get('adminreserve');
+                if (adminResCmd && typeof adminResCmd.handleModalSubmit === 'function') {
+                    await adminResCmd.handleModalSubmit(interaction);
+                }
+            }
+        }
     } catch (error) {
-        console.error(`Error executing command ${interaction.commandName}:`, error);
+        console.error('Error handling interaction:', error);
         const errorMessage = 'There was an error while executing this command!';
         try {
             if (interaction.replied || interaction.deferred) {
