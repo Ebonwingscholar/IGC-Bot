@@ -1,35 +1,54 @@
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const eventManager = require('../utils/eventManager');
 
+function getUpcomingEventDates() {
+    const dates = [];
+    const now = new Date();
+    let d = new Date(now);
+    let day = d.getDay();
+    let diff = (6 - day + 7) % 7;
+    if (diff === 0 && now.getHours() >= 18) diff = 7;
+    d.setDate(d.getDate() + diff);
+
+    for (let i = 0; i < 4; i++) {
+        const value = d.toISOString().split('T')[0];
+        const label = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+        dates.push({ label, value });
+        d.setDate(d.getDate() + 7);
+    }
+    return dates;
+}
+
+// Helper to format player rosters cleanly regardless of schema structure
+function formatPlayerList(players) {
+    if (!players || players.length === 0) return 'None';
+    return players.map(p => {
+        if (typeof p === 'string') return p;
+        if (p.name) return p.name;
+        if (p.id) return `<@${p.id}>`;
+        return 'Unknown Player';
+    }).join(', ');
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('viewevents')
-        .setDescription('View table schedules and player rosters for upcoming club events'),
+        .setDescription('View the table schedule and player rosters for club events'),
 
     async execute(interaction) {
-        const events = eventManager.getUpcomingEvents();
-
-        if (events.length === 0) {
-            return interaction.reply({
-                content: '❌ There are currently no upcoming club events scheduled to view.',
-                ephemeral: true
-            });
-        }
+        const dates = getUpcomingEventDates();
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId('view_event_date')
-            .setPlaceholder('📅 Select an event to view schedule...')
+            .setPlaceholder('📅 Select event date to view...')
             .addOptions(
-                events.map(e => new StringSelectMenuOptionBuilder()
-                    .setLabel(e.label)
-                    .setValue(e.value)
-                )
+                dates.map(d => new StringSelectMenuOptionBuilder().setLabel(d.label).setValue(d.value))
             );
 
+        // PUBLIC INITIAL REPLY: ephemeral property removed so everyone can see the menu and result
         await interaction.reply({
-            content: '📊 **Inverurie Gaming Club - Event Schedules**\nSelect an upcoming event to view table bookings and player rosters:',
-            components: [new ActionRowBuilder().addComponents(selectMenu)],
-            ephemeral: true
+            content: '📊 **Inverurie Gaming Club - Event Schedules**\nSelect an event date to view:',
+            components: [new ActionRowBuilder().addComponents(selectMenu)]
         });
     },
 
@@ -39,9 +58,8 @@ module.exports = {
         const dateStr = interaction.values[0];
         const eventData = eventManager.getEventData(dateStr);
         const tables = eventData.tables;
-        const eventTitle = eventData.eventName ? `"${eventData.eventName}"` : 'Club Event';
 
-        let scheduleText = `🎲 **Event Table Schedule — ${eventTitle} (${dateStr})**\n\n`;
+        let scheduleText = `🎲 **Event Table Schedule — ${dateStr}**\n\n`;
         let activeCount = 0;
 
         for (let i = 1; i <= eventManager.MAX_TABLES; i++) {
@@ -51,20 +69,19 @@ module.exports = {
             activeCount++;
             scheduleText += `📌 **Table ${i}**\n`;
 
-            // Check if both slots are booked by the same organizer/game (Whole Day)
             if (t.am && t.pm && t.am.organizerId === t.pm.organizerId && t.am.gameName === t.pm.gameName) {
-                const pList = t.am.players.map(p => p.name).join(', ');
+                const pList = formatPlayerList(t.am.players);
                 scheduleText += `• 🟢 **Whole Day:** ${t.am.gameName}\n  Players (${t.am.players.length}/${t.am.maxPlayers}): ${pList}\n`;
             } else {
                 if (t.am) {
-                    const pList = t.am.players.map(p => p.name).join(', ');
+                    const pList = formatPlayerList(t.am.players);
                     scheduleText += `• 🌅 **AM (09:00-13:00):** ${t.am.gameName}\n  Players (${t.am.players.length}/${t.am.maxPlayers}): ${pList}\n`;
                 } else {
                     scheduleText += `• 🌅 **AM:** *AVAILABLE*\n`;
                 }
 
                 if (t.pm) {
-                    const pList = t.pm.players.map(p => p.name).join(', ');
+                    const pList = formatPlayerList(t.pm.players);
                     scheduleText += `• 🌇 **PM (13:30-17:30):** ${t.pm.gameName}\n  Players (${t.pm.players.length}/${t.pm.maxPlayers}): ${pList}\n`;
                 } else {
                     scheduleText += `• 🌇 **PM:** *AVAILABLE*\n`;
@@ -74,9 +91,10 @@ module.exports = {
         }
 
         if (activeCount === 0) {
-            scheduleText = `📅 **Event Table Schedule — ${eventTitle} (${dateStr})**\n\nNo tables have been booked for this event yet! Be the first to start a table using \`/bookevent\`.`;
+            scheduleText = `📅 **Event Table Schedule — ${dateStr}**\n\nNo tables have been booked for this event yet! Be the first to book using \`/bookevent\`.`;
         }
 
+        // PUBLIC UPDATE: Replaces the prompt message with the public schedule view
         await interaction.update({
             content: scheduleText,
             components: []
