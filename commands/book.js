@@ -94,20 +94,19 @@ module.exports = {
             flow.date = interaction.values[0];
             activeBookFlows.set(interaction.user.id, flow);
 
-            // Fetch existing Thursday bookings to offer "Join" options
-            const allRes = tableManager.getReservations();
-            const dayRes = allRes[flow.date] || {};
+            // Safely fetch existing Thursday bookings array for this date
+            const dayRes = tableManager.getAllReservations(flow.date);
 
             const actionOptions = [
                 { label: 'Start a New Table', value: 'create', description: 'Reserve a fresh Thursday table slot for your game', emoji: '➕' }
             ];
 
-            for (const [tableNum, res] of Object.entries(dayRes)) {
-                if (res) {
+            for (const res of dayRes) {
+                if (res && res.tableNumber) {
                     actionOptions.push({
-                        label: `Join Table ${tableNum}: ${res.gameName}`,
-                        description: `Host: ${res.userName} | Players: ${res.playerNames}`,
-                        value: `join_${tableNum}`
+                        label: `Join Table ${res.tableNumber}: ${res.gameName}`,
+                        description: `Host: ${res.username} | Roster: ${res.playerNames}`,
+                        value: `join_${res.tableNumber}`
                     });
                 }
             }
@@ -148,8 +147,8 @@ module.exports = {
                         ? (await interaction.guild.members.fetch(interaction.user.id)).displayName 
                         : interaction.user.username;
                     
-                    const allRes = tableManager.getReservations();
-                    const res = allRes[flow.date] ? allRes[flow.date][tableNum] : null;
+                    const dayRes = tableManager.getAllReservations(flow.date);
+                    const res = dayRes.find(r => r.tableNumber === tableNum);
 
                     if (!res) {
                         return interaction.update({ content: `❌ Table ${tableNum} is no longer active.`, components: [] });
@@ -157,8 +156,8 @@ module.exports = {
 
                     // Append user to existing player names string if not already included
                     if (!res.playerNames.toLowerCase().includes(nickname.toLowerCase())) {
-                        res.playerNames += `, ${nickname}`;
-                        tableManager.saveReservations(allRes);
+                        const updatedPlayers = `${res.playerNames}, ${nickname}`;
+                        tableManager.updateTablePlayers(tableNum, flow.date, res.session || 'Evening 18:00-22:00', updatedPlayers);
                     }
 
                     activeBookFlows.delete(interaction.user.id);
