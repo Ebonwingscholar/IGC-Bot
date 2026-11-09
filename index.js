@@ -88,6 +88,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (bookCmd && typeof bookCmd.handleSelectMenu === 'function') {
                     await bookCmd.handleSelectMenu(interaction);
                 }
+            } else if (interaction.customId.startsWith('cancel_')) {
+                const cancelCmd = client.commands.get('cancel');
+                if (cancelCmd && typeof cancelCmd.handleSelectMenu === 'function') {
+                    await cancelCmd.handleSelectMenu(interaction);
+                }
             } else if (interaction.customId.startsWith('adminmanage_')) {
                 const adminManageCmd = client.commands.get('adminmanage');
                 if (adminManageCmd && typeof adminManageCmd.handleSelectMenu === 'function') {
