@@ -286,9 +286,11 @@ module.exports = {
                     'Evening 18:00-22:00'
                 );
 
+                const tableNum = (typeof res === 'object' && res !== null) ? (res.tableNumber || res.table || res) : res;
+
                 activeBookFlows.delete(interaction.user.id);
                 await interaction.editReply({
-                    content: `✅ **Thursday Reservation Confirmed!**\nReserved **Table ${res.tableNumber}** on **${flow.date}** for ${mentions} playing **${gameName}**.`
+                    content: `✅ **Thursday Reservation Confirmed!**\nReserved **Table ${tableNum}** on **${flow.date}** for ${mentions} playing **${gameName}**.`
                 });
             } else if (interaction.customId === 'book_event_modal') {
                 const maxPlayers = parseInt(interaction.fields.getTextInputValue('modal_max_players').trim()) || 8;
