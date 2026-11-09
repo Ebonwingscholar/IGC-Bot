@@ -83,6 +83,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (reserveCmd && typeof reserveCmd.handleSelectMenu === 'function') {
                     await reserveCmd.handleSelectMenu(interaction);
                 }
+            } else if (interaction.customId.startsWith('book_')) {
+                const bookCmd = client.commands.get('book');
+                if (bookCmd && typeof bookCmd.handleSelectMenu === 'function') {
+                    await bookCmd.handleSelectMenu(interaction);
+                }
             } else if (interaction.customId.startsWith('adminmanage_')) {
                 const adminManageCmd = client.commands.get('adminmanage');
                 if (adminManageCmd && typeof adminManageCmd.handleSelectMenu === 'function') {
@@ -123,6 +128,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (reserveCmd && typeof reserveCmd.handleUserSelect === 'function') {
                     await reserveCmd.handleUserSelect(interaction);
                 }
+            } else if (interaction.customId.startsWith('book_')) {
+                const bookCmd = client.commands.get('book');
+                if (bookCmd && typeof bookCmd.handleUserSelect === 'function') {
+                    await bookCmd.handleUserSelect(interaction);
+                }
             } else if (interaction.customId === 'event_select_players') {
                 const bookEventCmd = client.commands.get('bookevent');
                 if (bookEventCmd && typeof bookEventCmd.handleUserSelect === 'function') {
@@ -147,6 +157,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 const reserveCmd = client.commands.get('reserve');
                 if (reserveCmd && typeof reserveCmd.handleModalSubmit === 'function') {
                     await reserveCmd.handleModalSubmit(interaction);
+                }
+            } else if (interaction.customId.startsWith('book_')) {
+                const bookCmd = client.commands.get('book');
+                if (bookCmd && typeof bookCmd.handleModalSubmit === 'function') {
+                    await bookCmd.handleModalSubmit(interaction);
                 }
             } else if (interaction.customId === 'event_start_modal') {
                 const bookEventCmd = client.commands.get('bookevent');
