@@ -157,6 +157,33 @@ class TableManager {
         });
     }
 
+    // Returns reservations structured as a nested object: { [date]: { [tableNumber]: reservationObj } }
+    getReservationsGroupedByDate() {
+        const grouped = {};
+        for (const r of this.reservations) {
+            const d = r.date || new Date().toISOString().split('T')[0];
+            if (!grouped[d]) grouped[d] = {};
+            grouped[d][r.tableNumber] = r;
+        }
+        return grouped;
+    }
+
+    // Update player names on an existing reservation (used when someone joins a Thursday table)
+    updateTablePlayers(tableNumber, date, session, newPlayerNames) {
+        const reservation = this.reservations.find(r => 
+            r.tableNumber === tableNumber && 
+            (r.date || new Date().toISOString().split('T')[0]) === date && 
+            (r.session || 'Evening 18:00-22:00') === session
+        );
+
+        if (reservation) {
+            reservation.playerNames = newPlayerNames;
+            this.saveReservations();
+            return true;
+        }
+        return false;
+    }
+
     getAvailableTableCount(date = null, session = 'Evening 18:00-22:00') {
         const targetDate = date || new Date().toISOString().split('T')[0];
         const taken = this.reservations.filter(r => (r.date || targetDate) === targetDate && (r.session || 'Evening 18:00-22:00') === session).length;
@@ -169,41 +196,11 @@ class TableManager {
     }
 
     async checkIfUserIsAdmin(userId, interaction = null) {
-    try {
-
-        // Slash command path
-        if (interaction && interaction.member) {
-
-            if (
-                interaction.member.permissions.has(
-                    PermissionFlagsBits.Administrator
-                )
-            ) {
-                return true;
-            }
-
-            if (
-                config.ADMIN_ROLE_ID &&
-                interaction.member.roles.cache.has(
-                    config.ADMIN_ROLE_ID
-                )
-            ) {
-                return true;
-            }
-        }
-
-        // DM command path
-        const { client } = require('../index');
-
-        for (const guild of client.guilds.cache.values()) {
-
-            try {
-
-                const member =
-                    await guild.members.fetch(userId);
-
+        try {
+            // Slash command path
+            if (interaction && interaction.member) {
                 if (
-                    member.permissions.has(
+                    interaction.member.permissions.has(
                         PermissionFlagsBits.Administrator
                     )
                 ) {
@@ -212,30 +209,52 @@ class TableManager {
 
                 if (
                     config.ADMIN_ROLE_ID &&
-                    member.roles.cache.has(
+                    interaction.member.roles.cache.has(
                         config.ADMIN_ROLE_ID
                     )
                 ) {
                     return true;
                 }
-
-            } catch {
-                continue;
             }
+
+            // DM command path
+            const { client } = require('../index');
+
+            for (const guild of client.guilds.cache.values()) {
+                try {
+                    const member =
+                        await guild.members.fetch(userId);
+
+                    if (
+                        member.permissions.has(
+                            PermissionFlagsBits.Administrator
+                        )
+                    ) {
+                        return true;
+                    }
+
+                    if (
+                        config.ADMIN_ROLE_ID &&
+                        member.roles.cache.has(
+                            config.ADMIN_ROLE_ID
+                        )
+                    ) {
+                        return true;
+                    }
+                } catch {
+                    continue;
+                }
+            }
+
+            return false;
+        } catch (error) {
+            console.error(
+                'Error checking admin status:',
+                error
+            );
+            return false;
         }
-
-        return false;
-
-    } catch (error) {
-
-        console.error(
-            'Error checking admin status:',
-            error
-        );
-
-        return false;
     }
-}
 }
 
 module.exports = new TableManager();
