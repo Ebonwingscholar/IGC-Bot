@@ -23,7 +23,7 @@ module.exports = {
             .setCustomId('book_select_type')
             .setPlaceholder('📂 Select what you would like to book...')
             .addOptions([
-                { label: 'Thursday Club Night', value: 'thursday', description: 'Book a table for a regular Thursday night', emoji: '🍺' },
+                { label: 'Thursday Club Night', value: 'thursday', description: 'Book or join a table for a regular Thursday night', emoji: '🍺' },
                 { label: 'Special Club Event', value: 'event', description: 'Book or join a table for an upcoming weekend event', emoji: '📅' }
             ]);
 
@@ -94,16 +94,83 @@ module.exports = {
             flow.date = interaction.values[0];
             activeBookFlows.set(interaction.user.id, flow);
 
-            const userSelect = new UserSelectMenuBuilder()
-                .setCustomId('book_thursday_players')
-                .setPlaceholder('👥 Select/tag players for your table (Max 8)...')
-                .setMinValues(1)
-                .setMaxValues(8);
+            // Fetch existing Thursday bookings to offer "Join" options
+            const allRes = tableManager.getReservations();
+            const dayRes = allRes[flow.date] || {};
+
+            const actionOptions = [
+                { label: 'Start a New Table', value: 'create', description: 'Reserve a fresh Thursday table slot for your game', emoji: '➕' }
+            ];
+
+            for (const [tableNum, res] of Object.entries(dayRes)) {
+                if (res) {
+                    actionOptions.push({
+                        label: `Join Table ${tableNum}: ${res.gameName}`,
+                        description: `Host: ${res.userName} | Players: ${res.playerNames}`,
+                        value: `join_${tableNum}`
+                    });
+                }
+            }
+
+            const actionMenu = new StringSelectMenuBuilder()
+                .setCustomId('book_thursday_action')
+                .setPlaceholder('🎲 Start a new table or join an existing one...')
+                .addOptions(actionOptions.map(opt => new StringSelectMenuOptionBuilder(opt)));
 
             await interaction.editReply({
-                content: `🍺 **Thursday Night Booking** (${flow.date})\nSelect or tag the players for this table:`,
-                components: [new ActionRowBuilder().addComponents(userSelect)]
+                content: `🍺 **Thursday Night Booking** (${flow.date})\nChoose action:`,
+                components: [new ActionRowBuilder().addComponents(actionMenu)]
             });
+        }
+        else if (interaction.customId === 'book_thursday_action') {
+            const flow = activeBookFlows.get(interaction.user.id) || {};
+            const val = interaction.values[0];
+
+            if (val === 'create') {
+                await interaction.deferUpdate();
+                flow.action = 'create';
+                activeBookFlows.set(interaction.user.id, flow);
+
+                const userSelect = new UserSelectMenuBuilder()
+                    .setCustomId('book_thursday_players')
+                    .setPlaceholder('👥 Select/tag players for your table (Max 8)...')
+                    .setMinValues(1)
+                    .setMaxValues(8);
+
+                await interaction.editReply({
+                    content: `🍺 **New Thursday Table** (${flow.date})\nSelect or tag the players for this table:`,
+                    components: [new ActionRowBuilder().addComponents(userSelect)]
+                });
+            } else if (val.startsWith('join_')) {
+                const tableNum = parseInt(val.replace('join_', ''));
+                try {
+                    const nickname = interaction.guild 
+                        ? (await interaction.guild.members.fetch(interaction.user.id)).displayName 
+                        : interaction.user.username;
+                    
+                    const allRes = tableManager.getReservations();
+                    const res = allRes[flow.date] ? allRes[flow.date][tableNum] : null;
+
+                    if (!res) {
+                        return interaction.update({ content: `❌ Table ${tableNum} is no longer active.`, components: [] });
+                    }
+
+                    // Append user to existing player names string if not already included
+                    if (!res.playerNames.toLowerCase().includes(nickname.toLowerCase())) {
+                        res.playerNames += `, ${nickname}`;
+                        tableManager.saveReservations(allRes);
+                    }
+
+                    activeBookFlows.delete(interaction.user.id);
+
+                    await interaction.update({
+                        content: `🎉 **Successfully joined Table ${tableNum}!**\nYou have been added to the Thursday roster for **${flow.date}** (${res.gameName}).`,
+                        components: []
+                    });
+                } catch (err) {
+                    await interaction.update({ content: `❌ ${err.message}`, components: [] });
+                }
+            }
         }
 
         // --- BRANCH B: Event Booking Steps ---
