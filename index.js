@@ -93,6 +93,11 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (cancelCmd && typeof cancelCmd.handleSelectMenu === 'function') {
                     await cancelCmd.handleSelectMenu(interaction);
                 }
+            } else if (interaction.customId.startsWith('view_')) {
+                const viewCmd = client.commands.get('view');
+                if (viewCmd && typeof viewCmd.handleSelectMenu === 'function') {
+                    await viewCmd.handleSelectMenu(interaction);
+                }
             } else if (interaction.customId.startsWith('adminmanage_')) {
                 const adminManageCmd = client.commands.get('adminmanage');
                 if (adminManageCmd && typeof adminManageCmd.handleSelectMenu === 'function') {
@@ -107,11 +112,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 const cancelCmd = client.commands.get('canceleventbooking');
                 if (cancelCmd && typeof cancelCmd.handleSelectMenu === 'function') {
                     await cancelCmd.handleSelectMenu(interaction);
-                }
-            } else if (interaction.customId.startsWith('view_')) {
-                const viewCmd = client.commands.get('viewevents');
-                if (viewCmd && typeof viewCmd.handleSelectMenu === 'function') {
-                    await viewCmd.handleSelectMenu(interaction);
                 }
             } else if (interaction.customId.startsWith('adminres_')) {
                 const adminResCmd = client.commands.get('adminreserve');
@@ -234,15 +234,10 @@ client.on(Events.MessageCreate, async message => {
     } else if (command === '!help') {
         const helpMessage = `
 **Wargaming Table Reservation Bot Commands:**
-- \`!reserve <player names> + <game name>\` - Reserve a table (Example: !reserve John, Bob + Warhammer 40k)
-- \`!cancel\` - Cancel your reservation
-- \`!view\` - View all current reservations
-- \`!reset\` - Reset all reservations (Admin only)
-- \`!canceltable <table number>\` - Cancel a reservation by table number (Admin only)
-- \`!adminreserve <table number> <player names> + <game name>\` - Reserve a specific table (Admin only)
+- \`/book\` - Book or join a table interactive wizard (Thursdays & Events)
+- \`/cancel\` - Cancel table or remove self from roster interactive wizard
+- \`/view\` - View table reservations schedule for Thursdays or Special Events
 - \`!help\` - Show this help message
-
-**Note:** Slash commands also support @mentioning players instead of typing names manually.
         `;
         await message.reply(helpMessage);
     } else {
@@ -253,5 +248,5 @@ client.on(Events.MessageCreate, async message => {
 // Login to Discord
 client.login(process.env.DISCORD_TOKEN);
 
-// Export client for other modules (e.g., send DMs)
+// Export client for other modules
 module.exports = { client };
