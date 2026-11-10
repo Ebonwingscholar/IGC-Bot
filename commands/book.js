@@ -15,9 +15,6 @@ const eventManager = require('../utils/eventManager');
 
 const activeBookFlows = new Map();
 
-// Known reference Thursday (Last active bi-weekly club night anchor: 5th Nov 2026)
-const REFERENCE_THURSDAY = new Date('2026-11-05T00:00:00');
-
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('book')
@@ -49,7 +46,7 @@ module.exports = {
             if (type === 'thursday') {
                 const options = [];
                 const now = new Date();
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
                 // Read closed dates directly from closed-dates.json flat array
                 let closedDates = [];
@@ -62,15 +59,25 @@ module.exports = {
                     console.error('Error reading closed-dates.json:', err);
                 }
 
-                // Find the next active bi-weekly Thursday starting from reference date (2026-11-05)
-                let currentThursday = new Date(REFERENCE_THURSDAY);
-                while (currentThursday < today) {
+                // Helper function to format local Date objects cleanly to YYYY-MM-DD
+                const formatDate = (dObj) => {
+                    const y = dObj.getFullYear();
+                    const m = String(dObj.getMonth() + 1).padStart(2, '0');
+                    const d = String(dObj.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+
+                // Anchor date: 5th Nov 2026 (Month is 0-indexed: 10 = Nov)
+                let currentThursday = new Date(2026, 10, 5);
+
+                // Fast-forward to the first bi-weekly Thursday that is today or in the future
+                while (formatDate(currentThursday) < todayStr) {
                     currentThursday.setDate(currentThursday.getDate() + 14);
                 }
 
                 // Generate 3 valid bi-weekly Thursday options, skipping closed dates
                 while (options.length < 3) {
-                    const dateStr = currentThursday.toISOString().split('T')[0];
+                    const dateStr = formatDate(currentThursday);
                     
                     if (!closedDates.includes(dateStr)) {
                         options.push(new StringSelectMenuOptionBuilder().setLabel(dateStr).setValue(dateStr));
