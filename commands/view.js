@@ -140,7 +140,6 @@ module.exports = {
                 });
             }
 
-            // Acknowledge step 1 quietly and post embed publicly for everyone to see
             await interaction.update({ content: '✅ Viewing schedule generated below.', components: [] });
             await interaction.followUp({ embeds: [embed], ephemeral: false });
         }
@@ -149,33 +148,56 @@ module.exports = {
             const dateStr = interaction.values[0];
             activeViewFlows.delete(interaction.user.id);
 
-            // Retrieve all bookings for this event date across all time slots
-            const eventBookings = typeof eventManager.getBookingsForDate === 'function' 
-                ? eventManager.getBookingsForDate(dateStr) 
-                : (eventManager.getAllBookings ? eventManager.getAllBookings(dateStr) : []);
+            // Fetch event data directly from eventManager
+            const eventData = eventManager.getEventData(dateStr);
+            const tables = eventData ? eventData.tables : {};
 
             const embed = new EmbedBuilder()
                 .setColor('#0099ff')
                 .setTitle(`📅 Special Event Schedule — ${dateStr}`)
                 .setTimestamp();
 
-            if (!eventBookings || eventBookings.length === 0) {
-                embed.setDescription('There are no table bookings currently registered for this event date.');
-            } else {
-                embed.setDescription(`Showing all active table bookings for **${dateStr}** across all sessions:`);
-                eventBookings.forEach(b => {
-                    const playerList = Array.isArray(b.players) ? b.players.map(p => p.name || p).join(', ') : (b.playerNames || 'N/A');
-                    const slotInfo = b.slot ? ` (${b.slot})` : '';
-                    const capacityInfo = b.maxPlayers ? ` [${b.currentPlayers || (Array.isArray(b.players) ? b.players.length : 1)}/${b.maxPlayers}]` : '';
+            const fieldsToAdd = [];
 
-                    embed.addFields({
-                        name: `Table ${b.tableNumber}${slotInfo} — ${b.gameName}${capacityInfo}`,
-                        value: `**Host:** ${b.organizer || b.username}\n**Roster:** ${playerList}`
+            for (let i = 1; i <= eventManager.MAX_TABLES; i++) {
+                const t = tables[i];
+                if (!t) continue;
+
+                // Check for Whole Day booking (am and pm exist and are identical)
+                if (t.am && t.pm && JSON.stringify(t.am) === JSON.stringify(t.pm)) {
+                    const slotData = t.am;
+                    const playerList = slotData.players.map(p => p.name).join(', ');
+                    fieldsToAdd.push({
+                        name: `Table ${i} (Whole Day) — ${slotData.gameName} [${slotData.players.length}/${slotData.maxPlayers}]`,
+                        value: `**Host:** ${slotData.organizerName}\n**Roster:** ${playerList}`
                     });
-                });
+                } else {
+                    // Check individual AM slot
+                    if (t.am) {
+                        const playerList = t.am.players.map(p => p.name).join(', ');
+                        fieldsToAdd.push({
+                            name: `Table ${i} (AM) — ${t.am.gameName} [${t.am.players.length}/${t.am.maxPlayers}]`,
+                            value: `**Host:** ${t.am.organizerName}\n**Roster:** ${playerList}`
+                        });
+                    }
+                    // Check individual PM slot
+                    if (t.pm) {
+                        const playerList = t.pm.players.map(p => p.name).join(', ');
+                        fieldsToAdd.push({
+                            name: `Table ${i} (PM) — ${t.pm.gameName} [${t.pm.players.length}/${t.pm.maxPlayers}]`,
+                            value: `**Host:** ${t.pm.organizerName}\n**Roster:** ${playerList}`
+                        });
+                    }
+                }
             }
 
-            // Acknowledge step 1 quietly and post embed publicly for everyone to see
+            if (fieldsToAdd.length === 0) {
+                embed.setDescription('There are no table bookings currently registered for this event date.');
+            } else {
+                embed.setDescription(`Showing all active table bookings for **${dateStr}**:`);
+                fieldsToAdd.forEach(field => embed.addFields(field));
+            }
+
             await interaction.update({ content: '✅ Viewing schedule generated below.', components: [] });
             await interaction.followUp({ embeds: [embed], ephemeral: false });
         }
