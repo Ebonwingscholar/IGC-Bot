@@ -8,10 +8,15 @@ const {
     TextInputBuilder, 
     TextInputStyle
 } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 const tableManager = require('../utils/tableManager');
 const eventManager = require('../utils/eventManager');
 
 const activeBookFlows = new Map();
+
+// Known reference Thursday (Last active bi-weekly club night anchor: 5th Nov 2026)
+const REFERENCE_THURSDAY = new Date('2026-11-05T00:00:00');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -23,7 +28,7 @@ module.exports = {
             .setCustomId('book_select_type')
             .setPlaceholder('📂 Select what you would like to book...')
             .addOptions([
-                { label: 'Thursday Club Night', value: 'thursday', description: 'Book or join a table for a regular Thursday night', emoji: '🍺' },
+                { label: 'Thursday Club Night', value: 'thursday', description: 'Book or join a table for a bi-weekly Thursday night', emoji: '🍺' },
                 { label: 'Special Club Event', value: 'event', description: 'Book or join a table for an upcoming weekend event', emoji: '📅' }
             ]);
 
@@ -43,16 +48,35 @@ module.exports = {
 
             if (type === 'thursday') {
                 const options = [];
-                let d = new Date();
-                for (let i = 0; i < 6; i++) {
-                    const day = d.getDay();
-                    const diff = (4 - day + 7) % 7; // 4 = Thursday
-                    d.setDate(d.getDate() + diff);
-                    if (i === 0 && day > 4) d.setDate(d.getDate() + 7);
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+                // Read closed dates directly from closed-dates.json flat array
+                let closedDates = [];
+                const closedFilePath = path.join(__dirname, '../data/closed-dates.json');
+                try {
+                    if (fs.existsSync(closedFilePath)) {
+                        closedDates = JSON.parse(fs.readFileSync(closedFilePath, 'utf8'));
+                    }
+                } catch (err) {
+                    console.error('Error reading closed-dates.json:', err);
+                }
+
+                // Find the next active bi-weekly Thursday starting from reference date (2026-11-05)
+                let currentThursday = new Date(REFERENCE_THURSDAY);
+                while (currentThursday < today) {
+                    currentThursday.setDate(currentThursday.getDate() + 14);
+                }
+
+                // Generate 3 valid bi-weekly Thursday options, skipping closed dates
+                while (options.length < 3) {
+                    const dateStr = currentThursday.toISOString().split('T')[0];
                     
-                    const dateStr = d.toISOString().split('T')[0];
-                    options.push(new StringSelectMenuOptionBuilder().setLabel(dateStr).setValue(dateStr));
-                    d.setDate(d.getDate() + 7);
+                    if (!closedDates.includes(dateStr)) {
+                        options.push(new StringSelectMenuOptionBuilder().setLabel(dateStr).setValue(dateStr));
+                    }
+
+                    currentThursday.setDate(currentThursday.getDate() + 14);
                 }
 
                 const thursdayMenu = new StringSelectMenuBuilder()
@@ -61,7 +85,7 @@ module.exports = {
                     .addOptions(options);
 
                 await interaction.editReply({
-                    content: '🍺 **Thursday Night Booking**\nSelect date:',
+                    content: '🍺 **Thursday Night Booking (Bi-weekly)**\nSelect date:',
                     components: [new ActionRowBuilder().addComponents(thursdayMenu)]
                 });
             } else if (type === 'event') {
