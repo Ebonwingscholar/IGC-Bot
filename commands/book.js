@@ -214,9 +214,9 @@ module.exports = {
                 .setCustomId('book_event_slot')
                 .setPlaceholder('⏱️ Select time slot...')
                 .addOptions([
-                    { label: 'Morning (AM)', value: 'AM', description: '09:00 - 13:00' },
-                    { label: 'Afternoon (PM)', value: 'PM', description: '13:30 - 17:30' },
-                    { label: 'Whole Day', value: 'Whole Day', description: '09:00 - 17:30' }
+                    { label: 'Morning (AM)', value: 'AM', description: '10:00 - 14:00' },
+                    { label: 'Afternoon (PM)', value: 'PM', description: 14:00 - 18:00' },
+                    { label: 'Whole Day', value: 'Whole Day', description: '10:00 - 18:00' }
                 ]);
 
             await interaction.editReply({
