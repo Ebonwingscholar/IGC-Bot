@@ -215,7 +215,7 @@ module.exports = {
                 .setPlaceholder('⏱️ Select time slot...')
                 .addOptions([
                     { label: 'Morning (AM)', value: 'AM', description: '10:00 - 14:00' },
-                    { label: 'Afternoon (PM)', value: 'PM', description: 14:00 - 18:00' },
+                    { label: 'Afternoon (PM)', value: 'PM', description: '14:00 - 18:00' },
                     { label: 'Whole Day', value: 'Whole Day', description: '10:00 - 18:00' }
                 ]);
 
