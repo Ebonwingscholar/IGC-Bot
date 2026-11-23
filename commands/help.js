@@ -8,8 +8,8 @@ module.exports = {
     async execute(interaction) {
         const embed = new EmbedBuilder()
             .setColor('#0099ff')
-            .setTitle('🎲 Inverurie Gaming Club — Table Reservation Guide')
-            .setDescription('Welcome! We use interactive slash commands to reserve and manage gaming tables for both **Thursday Club Nights** and **Special Weekend Events**.')
+            .setTitle('🎲 Inverurie Gaming Club — Bot Guide')
+            .setDescription('Welcome! We use interactive slash commands to reserve gaming tables for **Thursday Club Nights** and **Special Events**, as well as find fellow players by game.')
             .addFields(
                 {
                     name: '🍺 /book',
@@ -21,11 +21,15 @@ module.exports = {
                 },
                 {
                     name: '🔍 /view',
-                    value: 'View all active table reservations and available slots.\n• Select the category (Thursday or Event).\n• Pick the upcoming date to view the full public table schedule, host details, and roster lists.'
+                    value: 'View all active table reservations and available slots.\n• Select **Thursday** or **Special Event**.\n• Pick the date to view the table schedule, host details, and roster lists.'
+                },
+                {
+                    name: '👥 /playerfinder',
+                    value: 'Browse who plays a game and share your armies or notes.\n• Pick a game system from the dropdown to see its current player list.\n• Click **Join Roster** / **Edit My Details** to add yourself or share armies, game sizes, and preferences.\n• Click **Leave Roster** to remove yourself from that game.'
                 },
                 {
                     name: '🛡️ Admin Commands',
-                    value: '• `/closedates` — Manage club closures (skips dates automatically in `/book` and `/view`).\n• `/adminmanage` — Override or adjust rosters and game details.'
+                    value: '• `/adminmanage` — Create tables for players, add/remove roster members, or edit game details for Thursdays and events.\n• `/adminmanageevents` — Create new special events, edit an event date/name while keeping bookings, or cancel an event.\n• `/closedates` — Manage club closure dates so they are skipped in booking schedules.'
                 }
             )
             .setFooter({ text: 'Inverurie Gaming Club Bot', iconURL: interaction.guild ? interaction.guild.iconURL() : null })
