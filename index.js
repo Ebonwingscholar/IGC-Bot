@@ -103,6 +103,16 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (adminManageCmd && typeof adminManageCmd.handleSelectMenu === 'function') {
                     await adminManageCmd.handleSelectMenu(interaction);
                 }
+            } else if (interaction.customId.startsWith('adminmanageevents_')) {
+                const adminManageEventsCmd = client.commands.get('adminmanageevents');
+                if (adminManageEventsCmd && typeof adminManageEventsCmd.handleSelectMenu === 'function') {
+                    await adminManageEventsCmd.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('whoplays_')) {
+                const whoPlaysCmd = client.commands.get('whoplays');
+                if (whoPlaysCmd && typeof whoPlaysCmd.handleSelectMenu === 'function') {
+                    await whoPlaysCmd.handleSelectMenu(interaction);
+                }
             } else if (interaction.customId.startsWith('event_')) {
                 const bookEventCmd = client.commands.get('bookevent');
                 if (bookEventCmd && typeof bookEventCmd.handleSelectMenu === 'function') {
@@ -143,7 +153,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (bookEventCmd && typeof bookEventCmd.handleUserSelect === 'function') {
                     await bookEventCmd.handleUserSelect(interaction);
                 }
-            } else if (interaction.customId === 'adminmanage_add_user') {
+            } else if (interaction.customId.startsWith('adminmanage_')) {
                 const adminManageCmd = client.commands.get('adminmanage');
                 if (adminManageCmd && typeof adminManageCmd.handleUserSelect === 'function') {
                     await adminManageCmd.handleUserSelect(interaction);
@@ -178,10 +188,15 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (adminResCmd && typeof adminResCmd.handleModalSubmit === 'function') {
                     await adminResCmd.handleModalSubmit(interaction);
                 }
-            } else if (interaction.customId === 'adminmanage_details_modal') {
+            } else if (interaction.customId.startsWith('adminmanage_')) {
                 const adminManageCmd = client.commands.get('adminmanage');
                 if (adminManageCmd && typeof adminManageCmd.handleModalSubmit === 'function') {
                     await adminManageCmd.handleModalSubmit(interaction);
+                }
+            } else if (interaction.customId.startsWith('adminmanageevents_')) {
+                const adminManageEventsCmd = client.commands.get('adminmanageevents');
+                if (adminManageEventsCmd && typeof adminManageEventsCmd.handleModalSubmit === 'function') {
+                    await adminManageEventsCmd.handleModalSubmit(interaction);
                 }
             }
         }
