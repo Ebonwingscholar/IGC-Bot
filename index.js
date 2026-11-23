@@ -78,12 +78,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         // 2. Handle String Select Menus (Dropdowns)
         else if (interaction.isStringSelectMenu()) {
-            if (interaction.customId === 'select_reserve_date') {
-                const reserveCmd = client.commands.get('reserve');
-                if (reserveCmd && typeof reserveCmd.handleSelectMenu === 'function') {
-                    await reserveCmd.handleSelectMenu(interaction);
-                }
-            } else if (interaction.customId.startsWith('book_')) {
+            if (interaction.customId.startsWith('book_')) {
                 const bookCmd = client.commands.get('book');
                 if (bookCmd && typeof bookCmd.handleSelectMenu === 'function') {
                     await bookCmd.handleSelectMenu(interaction);
@@ -108,85 +103,40 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (adminManageEventsCmd && typeof adminManageEventsCmd.handleSelectMenu === 'function') {
                     await adminManageEventsCmd.handleSelectMenu(interaction);
                 }
+            } else if (interaction.customId.startsWith('playerfinder_')) {
+                const playerFinderCmd = client.commands.get('playerfinder');
+                if (playerFinderCmd && typeof playerFinderCmd.handleSelectMenu === 'function') {
+                    await playerFinderCmd.handleSelectMenu(interaction);
+                }
             } else if (interaction.customId.startsWith('whoplays_')) {
                 const whoPlaysCmd = client.commands.get('whoplays');
                 if (whoPlaysCmd && typeof whoPlaysCmd.handleSelectMenu === 'function') {
                     await whoPlaysCmd.handleSelectMenu(interaction);
-                }
-            } else if (interaction.customId.startsWith('event_')) {
-                const bookEventCmd = client.commands.get('bookevent');
-                if (bookEventCmd && typeof bookEventCmd.handleSelectMenu === 'function') {
-                    await bookEventCmd.handleSelectMenu(interaction);
-                }
-            } else if (interaction.customId.startsWith('cancelevent_')) {
-                const cancelCmd = client.commands.get('canceleventbooking');
-                if (cancelCmd && typeof cancelCmd.handleSelectMenu === 'function') {
-                    await cancelCmd.handleSelectMenu(interaction);
-                }
-            } else if (interaction.customId.startsWith('adminres_')) {
-                const adminResCmd = client.commands.get('adminreserve');
-                if (adminResCmd && typeof adminResCmd.handleSelectMenu === 'function') {
-                    await adminResCmd.handleSelectMenu(interaction);
-                }
-            } else if (interaction.customId.startsWith('admincancel_')) {
-                const adminCancelCmd = client.commands.get('canceltable');
-                if (adminCancelCmd && typeof adminCancelCmd.handleSelectMenu === 'function') {
-                    await adminCancelCmd.handleSelectMenu(interaction);
                 }
             }
         }
 
         // 3. Handle User Select Menus (Tagging Club Members)
         else if (interaction.isUserSelectMenu()) {
-            if (interaction.customId === 'select_reserve_players') {
-                const reserveCmd = client.commands.get('reserve');
-                if (reserveCmd && typeof reserveCmd.handleUserSelect === 'function') {
-                    await reserveCmd.handleUserSelect(interaction);
-                }
-            } else if (interaction.customId.startsWith('book_')) {
+            if (interaction.customId.startsWith('book_')) {
                 const bookCmd = client.commands.get('book');
                 if (bookCmd && typeof bookCmd.handleUserSelect === 'function') {
                     await bookCmd.handleUserSelect(interaction);
-                }
-            } else if (interaction.customId === 'event_select_players') {
-                const bookEventCmd = client.commands.get('bookevent');
-                if (bookEventCmd && typeof bookEventCmd.handleUserSelect === 'function') {
-                    await bookEventCmd.handleUserSelect(interaction);
                 }
             } else if (interaction.customId.startsWith('adminmanage_')) {
                 const adminManageCmd = client.commands.get('adminmanage');
                 if (adminManageCmd && typeof adminManageCmd.handleUserSelect === 'function') {
                     await adminManageCmd.handleUserSelect(interaction);
                 }
-            } else if (interaction.customId === 'adminres_select_players') {
-                const adminResCmd = client.commands.get('adminreserve');
-                if (adminResCmd && typeof adminResCmd.handleUserSelect === 'function') {
-                    await adminResCmd.handleUserSelect(interaction);
-                }
             }
         }
 
         // 4. Handle Modal Submissions
         else if (interaction.isModalSubmit()) {
-            if (interaction.customId === 'reserve_final_modal') {
-                const reserveCmd = client.commands.get('reserve');
-                if (reserveCmd && typeof reserveCmd.handleModalSubmit === 'function') {
-                    await reserveCmd.handleModalSubmit(interaction);
-                }
-            } else if (interaction.customId.startsWith('book_')) {
+            if (interaction.customId.startsWith('book_')) {
                 const bookCmd = client.commands.get('book');
                 if (bookCmd && typeof bookCmd.handleModalSubmit === 'function') {
                     await bookCmd.handleModalSubmit(interaction);
-                }
-            } else if (interaction.customId === 'event_start_modal') {
-                const bookEventCmd = client.commands.get('bookevent');
-                if (bookEventCmd && typeof bookEventCmd.handleModalSubmit === 'function') {
-                    await bookEventCmd.handleModalSubmit(interaction);
-                }
-            } else if (interaction.customId === 'adminres_modal' || interaction.customId === 'adminres_game_modal') {
-                const adminResCmd = client.commands.get('adminreserve');
-                if (adminResCmd && typeof adminResCmd.handleModalSubmit === 'function') {
-                    await adminResCmd.handleModalSubmit(interaction);
                 }
             } else if (interaction.customId.startsWith('adminmanage_')) {
                 const adminManageCmd = client.commands.get('adminmanage');
@@ -197,6 +147,21 @@ client.on(Events.InteractionCreate, async interaction => {
                 const adminManageEventsCmd = client.commands.get('adminmanageevents');
                 if (adminManageEventsCmd && typeof adminManageEventsCmd.handleModalSubmit === 'function') {
                     await adminManageEventsCmd.handleModalSubmit(interaction);
+                }
+            } else if (interaction.customId.startsWith('playerfinder_')) {
+                const playerFinderCmd = client.commands.get('playerfinder');
+                if (playerFinderCmd && typeof playerFinderCmd.handleModalSubmit === 'function') {
+                    await playerFinderCmd.handleModalSubmit(interaction);
+                }
+            }
+        }
+
+        // 5. Handle Buttons
+        else if (interaction.isButton()) {
+            if (interaction.customId.startsWith('playerfinder_')) {
+                const playerFinderCmd = client.commands.get('playerfinder');
+                if (playerFinderCmd && typeof playerFinderCmd.handleButton === 'function') {
+                    await playerFinderCmd.handleButton(interaction);
                 }
             }
         }
@@ -252,6 +217,7 @@ client.on(Events.MessageCreate, async message => {
 - \`/book\` - Book or join a table interactive wizard (Thursdays & Events)
 - \`/cancel\` - Cancel table or remove self from roster interactive wizard
 - \`/view\` - View table reservations schedule for Thursdays or Special Events
+- \`/playerfinder\` - Browse game rosters, share armies/notes, or join/leave a game
 - \`!help\` - Show this help message
         `;
         await message.reply(helpMessage);
