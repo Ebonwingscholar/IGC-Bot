@@ -405,8 +405,8 @@ module.exports = {
 
             const detailsInput = new TextInputBuilder()
                 .setCustomId('modal_player_details')
-                .setLabel('Player Details (Optional)')
-                .setPlaceholder("Note anything you'd like other players to know, such as what armies you play, your preferred game size etc")
+                .setLabel('Armies, game size, or notes (Optional)')
+                .setPlaceholder('e.g. Space Marines & Necrons, 2000pt games, weekday evenings')
                 .setStyle(TextInputStyle.Paragraph)
                 .setMaxLength(200)
                 .setRequired(false);
