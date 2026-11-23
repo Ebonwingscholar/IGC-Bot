@@ -1,31 +1,13 @@
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const eventManager = require('../utils/eventManager');
 
-function getUpcomingEventDates() {
-    const dates = [];
-    const now = new Date();
-    let d = new Date(now);
-    let day = d.getDay();
-    let diff = (6 - day + 7) % 7;
-    if (diff === 0 && now.getHours() >= 18) diff = 7;
-    d.setDate(d.getDate() + diff);
-
-    for (let i = 0; i < 4; i++) {
-        const value = d.toISOString().split('T')[0];
-        const label = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
-        dates.push({ label, value });
-        d.setDate(d.getDate() + 7);
-    }
-    return dates;
-}
-
-// Helper to format player rosters cleanly regardless of schema structure
+// Helper to format player rosters cleanly with Discord mentions prioritized
 function formatPlayerList(players) {
     if (!players || players.length === 0) return 'None';
     return players.map(p => {
         if (typeof p === 'string') return p;
-        if (p.name) return p.name;
         if (p.id) return `<@${p.id}>`;
+        if (p.name) return p.name;
         return 'Unknown Player';
     }).join(', ');
 }
@@ -36,13 +18,24 @@ module.exports = {
         .setDescription('View the table schedule and player rosters for club events'),
 
     async execute(interaction) {
-        const dates = getUpcomingEventDates();
+        // Fetch real upcoming events configured via /createevent
+        const events = eventManager.getUpcomingEvents();
+
+        if (!events || events.length === 0) {
+            return interaction.reply({ 
+                content: '❌ There are currently no upcoming club events scheduled to view.', 
+                ephemeral: true 
+            });
+        }
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId('view_event_date')
             .setPlaceholder('📅 Select event date to view...')
             .addOptions(
-                dates.map(d => new StringSelectMenuOptionBuilder().setLabel(d.label).setValue(d.value))
+                events.map(e => new StringSelectMenuOptionBuilder()
+                    .setLabel(e.label || e.date)
+                    .setValue(e.value || e.date)
+                )
             );
 
         // PUBLIC INITIAL REPLY: ephemeral property removed so everyone can see the menu and result

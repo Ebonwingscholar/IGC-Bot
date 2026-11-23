@@ -1,96 +1,205 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { 
+    SlashCommandBuilder, 
+    ActionRowBuilder, 
+    StringSelectMenuBuilder, 
+    StringSelectMenuOptionBuilder,
+    EmbedBuilder 
+} = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 const tableManager = require('../utils/tableManager');
+const eventManager = require('../utils/eventManager');
+
+const activeViewFlows = new Map();
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('view')
-        .setDescription('View all current table reservations'),
-    
+        .setDescription('View current table reservations for Thursday nights or special events'),
+
     async execute(interaction) {
-        try {
-            const embeds = this.createReservationEmbeds();
-            
-            if (embeds.length === 0) {
-                await interaction.reply('There are no current table reservations.');
-                return;
-            }
-            
-            // Reply with the first embed
-            await interaction.reply({ embeds: [embeds[0]] });
-            
-            // Send additional embeds as follow-ups if there are any
-            for (let i = 1; i < embeds.length; i++) {
-                await interaction.followUp({ embeds: [embeds[i]] });
-            }
-        } catch (error) {
-            console.error('Error in view command:', error);
-            await interaction.reply({ content: 'An error occurred while retrieving reservations. Please try again.', ephemeral: true });
-        }
+        const typeMenu = new StringSelectMenuBuilder()
+            .setCustomId('view_select_type')
+            .setPlaceholder('📂 Select what schedule to view...')
+            .addOptions([
+                { label: 'Thursday Club Night', value: 'thursday', description: 'View bookings for upcoming Thursday club nights', emoji: '🍺' },
+                { label: 'Special Club Event', value: 'event', description: 'View bookings for upcoming weekend events', emoji: '📅' }
+            ]);
+
+        await interaction.reply({
+            content: '🔍 **Table Reservations Schedule**\nStep 1: Select event type:',
+            components: [new ActionRowBuilder().addComponents(typeMenu)],
+            ephemeral: true
+        });
     },
-    
-    async handleDM(message) {
-        try {
-            const embeds = this.createReservationEmbeds();
-            
-            if (embeds.length === 0) {
-                await message.reply('There are no current table reservations.');
-                return;
+
+    async handleSelectMenu(interaction) {
+        // --- STEP 1: Choose Type (Thursday vs Event) ---
+        if (interaction.customId === 'view_select_type') {
+            await interaction.deferUpdate();
+            const type = interaction.values[0];
+            activeViewFlows.set(interaction.user.id, { type });
+
+            if (type === 'thursday') {
+                const options = [];
+                const now = new Date();
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+                let closedDates = [];
+                const closedFilePath = path.join(__dirname, '../data/closed-dates.json');
+                try {
+                    if (fs.existsSync(closedFilePath)) {
+                        closedDates = JSON.parse(fs.readFileSync(closedFilePath, 'utf8'));
+                    }
+                } catch (err) {
+                    console.error('Error reading closed-dates.json:', err);
+                }
+
+                const formatDate = (dObj) => {
+                    const y = dObj.getFullYear();
+                    const m = String(dObj.getMonth() + 1).padStart(2, '0');
+                    const d = String(dObj.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+
+                // Anchor date: 5th Nov 2026 (Month 10 = Nov)
+                let currentThursday = new Date(2026, 10, 5);
+
+                while (formatDate(currentThursday) < todayStr) {
+                    currentThursday.setDate(currentThursday.getDate() + 14);
+                }
+
+                while (options.length < 3) {
+                    const dateStr = formatDate(currentThursday);
+                    if (!closedDates.includes(dateStr)) {
+                        options.push(new StringSelectMenuOptionBuilder().setLabel(dateStr).setValue(dateStr));
+                    }
+                    currentThursday.setDate(currentThursday.getDate() + 14);
+                }
+
+                const thursdayMenu = new StringSelectMenuBuilder()
+                    .setCustomId('view_thursday_date')
+                    .setPlaceholder('📅 Select Thursday date...')
+                    .addOptions(options);
+
+                await interaction.editReply({
+                    content: '🍺 **Thursday Night Schedule**\nSelect date to view:',
+                    components: [new ActionRowBuilder().addComponents(thursdayMenu)]
+                });
+
+            } else if (type === 'event') {
+                const events = eventManager.getUpcomingEvents();
+                if (events.length === 0) {
+                    return interaction.editReply({ 
+                        content: '❌ There are currently no upcoming special events scheduled.', 
+                        components: [] 
+                    });
+                }
+
+                const eventMenu = new StringSelectMenuBuilder()
+                    .setCustomId('view_event_date')
+                    .setPlaceholder('📅 Select event date...')
+                    .addOptions(
+                        events.map(e => new StringSelectMenuOptionBuilder().setLabel(e.label).setValue(e.value))
+                    );
+
+                await interaction.editReply({
+                    content: '📅 **Special Event Schedule**\nSelect event date to view:',
+                    components: [new ActionRowBuilder().addComponents(eventMenu)]
+                });
             }
-            
-            // Send each embed
-            for (const embed of embeds) {
-                await message.reply({ embeds: [embed] });
-            }
-        } catch (error) {
-            console.error('Error in view DM command:', error);
-            await message.reply('An error occurred while retrieving reservations. Please try again.');
         }
-    },
-    
-    createReservationEmbeds() {
-        const reservations = tableManager.getAllReservations();
-        const embeds = [];
-        
-        if (reservations.length === 0) {
-            return embeds;
-        }
-        
-        // Calculate free tables
-        const totalTables = tableManager.MAX_TABLES;
-        const reservedTables = reservations.length;
-        const freeTables = totalTables - reservedTables;
-        
-        // Create embeds with max 10 reservations per embed
-        const maxReservationsPerEmbed = 10;
-        const totalEmbeds = Math.ceil(reservations.length / maxReservationsPerEmbed);
-        
-        for (let i = 0; i < totalEmbeds; i++) {
-            const startIdx = i * maxReservationsPerEmbed;
-            const endIdx = Math.min(startIdx + maxReservationsPerEmbed, reservations.length);
-            const currentReservations = reservations.slice(startIdx, endIdx);
-            
+
+        // --- STEP 2: Render Embed Output for Selected Date ---
+        else if (interaction.customId === 'view_thursday_date') {
+            const dateStr = interaction.values[0];
+            activeViewFlows.delete(interaction.user.id);
+
+            const dayRes = tableManager.getAllReservations(dateStr);
+            const totalTables = tableManager.MAX_TABLES || 10;
+            const reservedCount = dayRes.length;
+            const freeCount = Math.max(0, totalTables - reservedCount);
+
             const embed = new EmbedBuilder()
                 .setColor('#0099ff')
-                .setTitle('Wargaming Club Table Reservations')
-                .setDescription(`**Current Status:** ${reservedTables}/${totalTables} tables reserved (${freeTables} available)`)
+                .setTitle(`🍺 Thursday Night Schedule — ${dateStr}`)
+                .setDescription(`**Capacity:** ${reservedCount}/${totalTables} tables reserved (${freeCount} available)`)
                 .setTimestamp();
-            
-            currentReservations.forEach(res => {
-                embed.addFields({
-                    name: `Table ${res.tableNumber}`, 
-                    value: `**Players:** ${res.playerNames}\n**Game:** ${res.gameName}\n**Reserved by:** ${res.username}`
+
+            if (dayRes.length === 0) {
+                embed.addFields({ 
+                    name: 'No Tables Reserved', 
+                    value: 'There are no tables booked yet for this night. Use `/book` to reserve the first table!' 
                 });
-            });
-            
-            if (i === 0) {
-                embed.setFooter({ text: `Page ${i+1}/${totalEmbeds} • Use !help for commands` });
             } else {
-                embed.setFooter({ text: `Page ${i+1}/${totalEmbeds}` });
+                dayRes.forEach(res => {
+                    embed.addFields({
+                        name: `Table ${res.tableNumber} — ${res.gameName}`,
+                        value: `**Host:** ${res.username}\n**Roster:** ${res.playerNames}\n**Session:** ${res.session || 'Evening 18:00-22:00'}`
+                    });
+                });
             }
-            
-            embeds.push(embed);
+
+            await interaction.update({ content: '✅ Viewing schedule generated below.', components: [] });
+            await interaction.followUp({ embeds: [embed], ephemeral: false });
         }
-        
-        return embeds;
+
+        else if (interaction.customId === 'view_event_date') {
+            const dateStr = interaction.values[0];
+            activeViewFlows.delete(interaction.user.id);
+
+            // Fetch event data directly from eventManager
+            const eventData = eventManager.getEventData(dateStr);
+            const tables = eventData ? eventData.tables : {};
+
+            const embed = new EmbedBuilder()
+                .setColor('#0099ff')
+                .setTitle(`📅 Special Event Schedule — ${dateStr}`)
+                .setTimestamp();
+
+            const fieldsToAdd = [];
+
+            for (let i = 1; i <= eventManager.MAX_TABLES; i++) {
+                const t = tables[i];
+                if (!t) continue;
+
+                // Check for Whole Day booking (am and pm exist and are identical)
+                if (t.am && t.pm && JSON.stringify(t.am) === JSON.stringify(t.pm)) {
+                    const slotData = t.am;
+                    const playerList = slotData.players.map(p => p.name).join(', ');
+                    fieldsToAdd.push({
+                        name: `Table ${i} (Whole Day) — ${slotData.gameName} [${slotData.players.length}/${slotData.maxPlayers}]`,
+                        value: `**Host:** ${slotData.organizerName}\n**Roster:** ${playerList}`
+                    });
+                } else {
+                    // Check individual AM slot
+                    if (t.am) {
+                        const playerList = t.am.players.map(p => p.name).join(', ');
+                        fieldsToAdd.push({
+                            name: `Table ${i} (AM) — ${t.am.gameName} [${t.am.players.length}/${t.am.maxPlayers}]`,
+                            value: `**Host:** ${t.am.organizerName}\n**Roster:** ${playerList}`
+                        });
+                    }
+                    // Check individual PM slot
+                    if (t.pm) {
+                        const playerList = t.pm.players.map(p => p.name).join(', ');
+                        fieldsToAdd.push({
+                            name: `Table ${i} (PM) — ${t.pm.gameName} [${t.pm.players.length}/${t.pm.maxPlayers}]`,
+                            value: `**Host:** ${t.pm.organizerName}\n**Roster:** ${playerList}`
+                        });
+                    }
+                }
+            }
+
+            if (fieldsToAdd.length === 0) {
+                embed.setDescription('There are no table bookings currently registered for this event date.');
+            } else {
+                embed.setDescription(`Showing all active table bookings for **${dateStr}**:`);
+                fieldsToAdd.forEach(field => embed.addFields(field));
+            }
+
+            await interaction.update({ content: '✅ Viewing schedule generated below.', components: [] });
+            await interaction.followUp({ embeds: [embed], ephemeral: false });
+        }
     }
 };

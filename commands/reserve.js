@@ -32,8 +32,7 @@ function getClosedDates() {
 }
 
 /**
- * Calculates upcoming fortnightly (every 2nd week) Thursday club dates cleanly without loops,
- * skipping any dates registered in data/closed-dates.json.
+ * Calculates upcoming fortnightly (every 2nd week) Thursday club dates, skipping any closed dates.
  * Anchor: Thursday, 5 November 2026.
  */
 function getUpcomingThursdays(count = 4) {
@@ -67,7 +66,7 @@ function getUpcomingThursdays(count = 4) {
         const day = String(sessionDate.getUTCDate()).padStart(2, '0');
         const dateStr = `${year}-${month}-${day}`;
 
-        // Skip if date is registered in closed-dates.json
+        // Skip if this date is listed in closed-dates.json
         if (!closedDates.includes(dateStr)) {
             const label = sessionDate.toLocaleDateString('en-GB', { 
                 weekday: 'long', 
@@ -113,12 +112,13 @@ module.exports = {
         });
     },
 
-    // Step 1: Date Selected -> Prompt for Players using User Select Menu
+    // Step 1: Date Selected -> Prompt for Players using a User Select Menu
     async handleSelectMenu(interaction) {
         if (interaction.customId !== 'select_reserve_date') return;
 
         const selectedDate = interaction.values[0];
 
+        // Store date temporarily for this user
         activeReservations.set(interaction.user.id, { date: selectedDate });
 
         const userSelect = new UserSelectMenuBuilder()
@@ -173,7 +173,6 @@ module.exports = {
     async handleModalSubmit(interaction) {
         if (interaction.customId !== 'reserve_final_modal') return;
 
-        // Defer reply immediately to prevent Discord 3-second timeout
         await interaction.deferReply({ ephemeral: true });
 
         const sessionData = activeReservations.get(interaction.user.id) || {};

@@ -83,6 +83,26 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (reserveCmd && typeof reserveCmd.handleSelectMenu === 'function') {
                     await reserveCmd.handleSelectMenu(interaction);
                 }
+            } else if (interaction.customId.startsWith('book_')) {
+                const bookCmd = client.commands.get('book');
+                if (bookCmd && typeof bookCmd.handleSelectMenu === 'function') {
+                    await bookCmd.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('cancel_')) {
+                const cancelCmd = client.commands.get('cancel');
+                if (cancelCmd && typeof cancelCmd.handleSelectMenu === 'function') {
+                    await cancelCmd.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('view_')) {
+                const viewCmd = client.commands.get('view');
+                if (viewCmd && typeof viewCmd.handleSelectMenu === 'function') {
+                    await viewCmd.handleSelectMenu(interaction);
+                }
+            } else if (interaction.customId.startsWith('adminmanage_')) {
+                const adminManageCmd = client.commands.get('adminmanage');
+                if (adminManageCmd && typeof adminManageCmd.handleSelectMenu === 'function') {
+                    await adminManageCmd.handleSelectMenu(interaction);
+                }
             } else if (interaction.customId.startsWith('event_')) {
                 const bookEventCmd = client.commands.get('bookevent');
                 if (bookEventCmd && typeof bookEventCmd.handleSelectMenu === 'function') {
@@ -92,11 +112,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 const cancelCmd = client.commands.get('canceleventbooking');
                 if (cancelCmd && typeof cancelCmd.handleSelectMenu === 'function') {
                     await cancelCmd.handleSelectMenu(interaction);
-                }
-            } else if (interaction.customId.startsWith('view_')) {
-                const viewCmd = client.commands.get('viewevents');
-                if (viewCmd && typeof viewCmd.handleSelectMenu === 'function') {
-                    await viewCmd.handleSelectMenu(interaction);
                 }
             } else if (interaction.customId.startsWith('adminres_')) {
                 const adminResCmd = client.commands.get('adminreserve');
@@ -118,10 +133,25 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (reserveCmd && typeof reserveCmd.handleUserSelect === 'function') {
                     await reserveCmd.handleUserSelect(interaction);
                 }
+            } else if (interaction.customId.startsWith('book_')) {
+                const bookCmd = client.commands.get('book');
+                if (bookCmd && typeof bookCmd.handleUserSelect === 'function') {
+                    await bookCmd.handleUserSelect(interaction);
+                }
             } else if (interaction.customId === 'event_select_players') {
                 const bookEventCmd = client.commands.get('bookevent');
                 if (bookEventCmd && typeof bookEventCmd.handleUserSelect === 'function') {
                     await bookEventCmd.handleUserSelect(interaction);
+                }
+            } else if (interaction.customId === 'adminmanage_add_user') {
+                const adminManageCmd = client.commands.get('adminmanage');
+                if (adminManageCmd && typeof adminManageCmd.handleUserSelect === 'function') {
+                    await adminManageCmd.handleUserSelect(interaction);
+                }
+            } else if (interaction.customId === 'adminres_select_players') {
+                const adminResCmd = client.commands.get('adminreserve');
+                if (adminResCmd && typeof adminResCmd.handleUserSelect === 'function') {
+                    await adminResCmd.handleUserSelect(interaction);
                 }
             }
         }
@@ -133,15 +163,25 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (reserveCmd && typeof reserveCmd.handleModalSubmit === 'function') {
                     await reserveCmd.handleModalSubmit(interaction);
                 }
+            } else if (interaction.customId.startsWith('book_')) {
+                const bookCmd = client.commands.get('book');
+                if (bookCmd && typeof bookCmd.handleModalSubmit === 'function') {
+                    await bookCmd.handleModalSubmit(interaction);
+                }
             } else if (interaction.customId === 'event_start_modal') {
                 const bookEventCmd = client.commands.get('bookevent');
                 if (bookEventCmd && typeof bookEventCmd.handleModalSubmit === 'function') {
                     await bookEventCmd.handleModalSubmit(interaction);
                 }
-            } else if (interaction.customId === 'adminres_modal') {
+            } else if (interaction.customId === 'adminres_modal' || interaction.customId === 'adminres_game_modal') {
                 const adminResCmd = client.commands.get('adminreserve');
                 if (adminResCmd && typeof adminResCmd.handleModalSubmit === 'function') {
                     await adminResCmd.handleModalSubmit(interaction);
+                }
+            } else if (interaction.customId === 'adminmanage_details_modal') {
+                const adminManageCmd = client.commands.get('adminmanage');
+                if (adminManageCmd && typeof adminManageCmd.handleModalSubmit === 'function') {
+                    await adminManageCmd.handleModalSubmit(interaction);
                 }
             }
         }
@@ -194,15 +234,10 @@ client.on(Events.MessageCreate, async message => {
     } else if (command === '!help') {
         const helpMessage = `
 **Wargaming Table Reservation Bot Commands:**
-- \`!reserve <player names> + <game name>\` - Reserve a table (Example: !reserve John, Bob + Warhammer 40k)
-- \`!cancel\` - Cancel your reservation
-- \`!view\` - View all current reservations
-- \`!reset\` - Reset all reservations (Admin only)
-- \`!canceltable <table number>\` - Cancel a reservation by table number (Admin only)
-- \`!adminreserve <table number> <player names> + <game name>\` - Reserve a specific table (Admin only)
+- \`/book\` - Book or join a table interactive wizard (Thursdays & Events)
+- \`/cancel\` - Cancel table or remove self from roster interactive wizard
+- \`/view\` - View table reservations schedule for Thursdays or Special Events
 - \`!help\` - Show this help message
-
-**Note:** Slash commands also support @mentioning players instead of typing names manually.
         `;
         await message.reply(helpMessage);
     } else {
@@ -210,16 +245,8 @@ client.on(Events.MessageCreate, async message => {
     }
 });
 
-// Create a simple HTTP server for uptime monitoring
-const http = require('http');
-const server = http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end('Bot is online!');
-});
-server.listen(5001);
-
 // Login to Discord
 client.login(process.env.DISCORD_TOKEN);
 
-// Export client for other modules (e.g., send DMs)
+// Export client for other modules
 module.exports = { client };

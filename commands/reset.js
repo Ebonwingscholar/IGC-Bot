@@ -1,66 +1,40 @@
 const { SlashCommandBuilder } = require('discord.js');
 const tableManager = require('../utils/tableManager');
-const config = require('../config');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('reset')
-        .setDescription('Reset all table reservations (Admin only)'),
+        .setDescription('Reset all general table reservations (Admin only)'),
     
     async execute(interaction) {
-        // Check if the user has the admin role
-        const member = interaction.member;
-        if (!member.roles.cache.some(role => role.id === config.ADMIN_ROLE_ID)) {
-            await interaction.reply({ content: 'You do not have permission to use this command. Only club admins can reset reservations.', ephemeral: true });
+        const isAdmin = await tableManager.checkIfUserIsAdmin(interaction.user.id, interaction);
+        if (!isAdmin) {
+            await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
             return;
         }
         
         try {
             tableManager.resetAllReservations();
-            await interaction.reply('All table reservations have been reset. The tables are now available for the next session.');
+            await interaction.reply('All table reservations have been reset.');
         } catch (error) {
             console.error('Error in reset command:', error);
-            await interaction.reply({ content: 'An error occurred while resetting reservations. Please try again.', ephemeral: true });
+            await interaction.reply({ content: 'An error occurred while resetting reservations.', ephemeral: true });
         }
     },
     
     async handleDM(message) {
         const userId = message.author.id;
-        
         try {
-            // Check if the user is in any guilds where the bot is present
-            const isAdmin = await this.checkIfUserIsAdmin(userId);
-            
+            const isAdmin = await tableManager.checkIfUserIsAdmin(userId);
             if (!isAdmin) {
-                await message.reply('You do not have permission to use this command. Only club admins can reset reservations.');
+                await message.reply('You do not have permission to use this command.');
                 return;
             }
-            
             tableManager.resetAllReservations();
-            await message.reply('All table reservations have been reset. The tables are now available for the next session.');
+            await message.reply('All table reservations have been reset.');
         } catch (error) {
             console.error('Error in reset DM command:', error);
-            await message.reply('An error occurred while resetting reservations. Please try again.');
+            await message.reply('An error occurred while resetting reservations.');
         }
-    },
-    
-    async checkIfUserIsAdmin(userId) {
-        const { client } = require('../index');
-        
-        // Check all guilds the bot is in
-        for (const guild of client.guilds.cache.values()) {
-            try {
-                // Fetch the member from the guild
-                const member = await guild.members.fetch(userId);
-                if (member && member.roles.cache.some(role => role.id === config.ADMIN_ROLE_ID)) {
-                    return true;
-                }
-            } catch (error) {
-                // User might not be in this guild, continue checking others
-                continue;
-            }
-        }
-        
-        return false;
     }
 };
