@@ -12,8 +12,42 @@ const fs = require('fs');
 const path = require('path');
 const tableManager = require('../utils/tableManager');
 const eventManager = require('../utils/eventManager');
+require('dotenv').config();
 
 const activeBookFlows = new Map();
+
+async function sendPaymentReminder(client, userIds, tableNumber, playerNames, gameName, sessionLabel) {
+    const uniqueIds = [...new Set(userIds.filter(Boolean))];
+    const failedUsers = [];
+
+    const reminderMessage = `
+**Payment Reminder for Table ${tableNumber}**
+Session Date: **${sessionLabel}**
+Reservation: ${playerNames} — Game: ${gameName}
+
+Please pay your table fee before playing.
+💳 **Bank Transfer Details**
+- **Account Name:** ${process.env.BANK_ACCOUNT_NAME || 'Inverurie Gaming Club'}
+- **Sort Code:** ${process.env.BANK_SORT_CODE || '12-34-56'}
+- **Account Number:** ${process.env.BANK_ACCOUNT_NUMBER || '12345678'}
+
+Reference: "Table ${tableNumber} ${sessionLabel}"
+    `.trim();
+
+    for (const id of uniqueIds) {
+        try {
+            const user = await client.users.fetch(id);
+            if (user && !user.bot) {
+                await user.send(reminderMessage);
+            }
+        } catch (err) {
+            console.warn(`Could not send payment reminder DM to ${id}:`, err.message);
+            failedUsers.push(`<@${id}>`);
+        }
+    }
+
+    return failedUsers;
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -48,7 +82,6 @@ module.exports = {
                 const now = new Date();
                 const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-                // Read closed dates directly from closed-dates.json flat array
                 let closedDates = [];
                 const closedFilePath = path.join(__dirname, '../data/closed-dates.json');
                 try {
@@ -59,7 +92,6 @@ module.exports = {
                     console.error('Error reading closed-dates.json:', err);
                 }
 
-                // Helper function to format local Date objects cleanly to YYYY-MM-DD
                 const formatDate = (dObj) => {
                     const y = dObj.getFullYear();
                     const m = String(dObj.getMonth() + 1).padStart(2, '0');
@@ -70,12 +102,10 @@ module.exports = {
                 // Anchor date: 5th Nov 2026 (Month is 0-indexed: 10 = Nov)
                 let currentThursday = new Date(2026, 10, 5);
 
-                // Fast-forward to the first bi-weekly Thursday that is today or in the future
                 while (formatDate(currentThursday) < todayStr) {
                     currentThursday.setDate(currentThursday.getDate() + 14);
                 }
 
-                // Generate 3 valid bi-weekly Thursday options, skipping closed dates
                 while (options.length < 3) {
                     const dateStr = formatDate(currentThursday);
                     
@@ -125,7 +155,6 @@ module.exports = {
             flow.date = interaction.values[0];
             activeBookFlows.set(interaction.user.id, flow);
 
-            // Safely fetch existing Thursday bookings array for this date
             const dayRes = tableManager.getAllReservations(flow.date);
 
             const actionOptions = [
@@ -163,12 +192,12 @@ module.exports = {
 
                 const userSelect = new UserSelectMenuBuilder()
                     .setCustomId('book_thursday_players')
-                    .setPlaceholder('👥 Select/tag players for your table (Max 8)...')
+                    .setPlaceholder('👥 Select gaming partners / opponents (you are included)...')
                     .setMinValues(1)
                     .setMaxValues(8);
 
                 await interaction.editReply({
-                    content: `🍺 **New Thursday Table** (${flow.date})\nSelect or tag the players for this table:`,
+                    content: `🍺 **New Thursday Table** (${flow.date})\nSelect or tag your playing partners below (you are included automatically):`,
                     components: [new ActionRowBuilder().addComponents(userSelect)]
                 });
             } else if (val.startsWith('join_')) {
@@ -185,16 +214,29 @@ module.exports = {
                         return interaction.update({ content: `❌ Table ${tableNum} is no longer active.`, components: [] });
                     }
 
-                    // Append user to existing player names string if not already included
+                    let updatedPlayers = res.playerNames;
                     if (!res.playerNames.toLowerCase().includes(nickname.toLowerCase())) {
-                        const updatedPlayers = `${res.playerNames}, ${nickname}`;
+                        updatedPlayers = `${res.playerNames}, ${nickname}`;
                         tableManager.updateTablePlayers(tableNum, flow.date, res.session || 'Evening 18:00-22:00', updatedPlayers);
                     }
 
+                    const failedDMs = await sendPaymentReminder(
+                        interaction.client,
+                        [interaction.user.id],
+                        tableNum,
+                        updatedPlayers,
+                        res.gameName,
+                        `Thursday, ${flow.date}`
+                    );
+
                     activeBookFlows.delete(interaction.user.id);
 
+                    const dmNote = failedDMs.length > 0
+                        ? '\n⚠️ *Could not DM your payment reminder—please check your Discord privacy settings allow server DMs.*'
+                        : '\n💳 *Payment reminder has been DMed to you.*';
+
                     await interaction.update({
-                        content: `🎉 **Successfully joined Table ${tableNum}!**\nYou have been added to the Thursday roster for **${flow.date}** (${res.gameName}).`,
+                        content: `🎉 **Successfully joined Table ${tableNum}!**\nYou have been added to the Thursday roster for **${flow.date}** (${res.gameName}).${dmNote}`,
                         components: []
                     });
                 } catch (err) {
@@ -266,12 +308,12 @@ module.exports = {
 
                 const userSelect = new UserSelectMenuBuilder()
                     .setCustomId('book_event_players')
-                    .setPlaceholder('👥 Tag players joining your initial roster (Max 8)...')
+                    .setPlaceholder('👥 Tag playing partners (you are included)...')
                     .setMinValues(1)
                     .setMaxValues(8);
 
                 await interaction.editReply({
-                    content: `📅 **New Event Table** (${flow.date} — ${flow.slot})\nSelect or tag player roster:`,
+                    content: `📅 **New Event Table** (${flow.date} — ${flow.slot})\nSelect or tag your playing partners below (you are included automatically):`,
                     components: [new ActionRowBuilder().addComponents(userSelect)]
                 });
             } else if (val.startsWith('join_')) {
@@ -281,11 +323,28 @@ module.exports = {
                         ? (await interaction.guild.members.fetch(interaction.user.id)).displayName 
                         : interaction.user.username;
                     
+                    const joinable = eventManager.getJoinableTables(flow.date, flow.slot);
+                    const targetTable = joinable.find(t => t.tableNumber === tableNum);
+
                     eventManager.joinBooking(flow.date, tableNum, flow.slot, interaction.user.id, nickname);
+
+                    const failedDMs = await sendPaymentReminder(
+                        interaction.client,
+                        [interaction.user.id],
+                        tableNum,
+                        nickname,
+                        targetTable ? targetTable.gameName : 'Special Event',
+                        `${flow.date} (${flow.slot})`
+                    );
+
                     activeBookFlows.delete(interaction.user.id);
 
+                    const dmNote = failedDMs.length > 0
+                        ? '\n⚠️ *Could not DM your payment reminder—please check your Discord privacy settings allow server DMs.*'
+                        : '\n💳 *Payment reminder has been DMed to you.*';
+
                     await interaction.update({
-                        content: `🎉 **Successfully joined Table ${tableNum}!**\nYou have been added to the roster for ${flow.date} (${flow.slot}).`,
+                        content: `🎉 **Successfully joined Table ${tableNum}!**\nYou have been added to the roster for ${flow.date} (${flow.slot}).${dmNote}`,
                         components: []
                     });
                 } catch (err) {
@@ -303,6 +362,15 @@ module.exports = {
 
         const selectedUsers = interaction.users;
         const roster = [];
+
+        // Always include the person booking first if they didn't pick themselves
+        if (!selectedUsers.has(interaction.user.id)) {
+            const selfMember = interaction.guild
+                ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null)
+                : null;
+            const selfName = selfMember ? selfMember.displayName : interaction.user.username;
+            roster.push({ id: interaction.user.id, name: selfName });
+        }
 
         for (const [userId, user] of selectedUsers) {
             const member = interaction.guild ? await interaction.guild.members.fetch(userId).catch(() => null) : null;
@@ -370,10 +438,11 @@ module.exports = {
         const roster = flow.roster || [{ id: interaction.user.id, name: interaction.user.username }];
         const primaryHost = roster[0];
         const mentions = roster.map(p => `<@${p.id}>`).join(', ');
+        const playerIds = roster.map(p => p.id);
+        const playerNamesString = roster.map(p => p.name).join(', ');
 
         try {
             if (interaction.customId === 'book_thursday_modal') {
-                const playerNamesString = roster.map(p => p.name).join(', ');
                 const res = tableManager.addReservation(
                     primaryHost.id, 
                     primaryHost.name, 
@@ -385,9 +454,23 @@ module.exports = {
 
                 const tableNum = (typeof res === 'object' && res !== null) ? (res.tableNumber || res.table || res) : res;
 
+                const failedDMs = await sendPaymentReminder(
+                    interaction.client,
+                    playerIds,
+                    tableNum,
+                    playerNamesString,
+                    gameName,
+                    `Thursday, ${flow.date}`
+                );
+
                 activeBookFlows.delete(interaction.user.id);
+
+                const dmNote = failedDMs.length > 0
+                    ? `\n⚠️ *Could not DM payment reminders to ${failedDMs.join(', ')} (server DMs may be disabled).*`
+                    : '\n💳 *Payment reminders have been DMed to all participants.*';
+
                 await interaction.editReply({
-                    content: `✅ **Thursday Reservation Confirmed!**\nReserved **Table ${tableNum}** on **${flow.date}** for ${mentions} playing **${gameName}**.`
+                    content: `✅ **Thursday Reservation Confirmed!**\nReserved **Table ${tableNum}** on **${flow.date}** for ${mentions} playing **${gameName}**.${dmNote}`
                 });
             } else if (interaction.customId === 'book_event_modal') {
                 const maxPlayers = parseInt(interaction.fields.getTextInputValue('modal_max_players').trim()) || 8;
@@ -401,9 +484,23 @@ module.exports = {
                     roster
                 );
 
+                const failedDMs = await sendPaymentReminder(
+                    interaction.client,
+                    playerIds,
+                    tableNum,
+                    playerNamesString,
+                    gameName,
+                    `${flow.date} (${flow.slot})`
+                );
+
                 activeBookFlows.delete(interaction.user.id);
+
+                const dmNote = failedDMs.length > 0
+                    ? `\n⚠️ *Could not DM payment reminders to ${failedDMs.join(', ')} (server DMs may be disabled).*`
+                    : '\n💳 *Payment reminders have been DMed to all participants.*';
+
                 await interaction.editReply({
-                    content: `🎉 **Event Table Created!**\nReserved **Table ${tableNum}** (${flow.slot}) on **${flow.date}** for ${mentions} playing **${gameName}** (Max Capacity: ${maxPlayers}).`
+                    content: `🎉 **Event Table Created!**\nReserved **Table ${tableNum}** (${flow.slot}) on **${flow.date}** for ${mentions} playing **${gameName}** (Max Capacity: ${maxPlayers}).${dmNote}`
                 });
             }
         } catch (err) {
